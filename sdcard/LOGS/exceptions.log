@@ -1,0 +1,198 @@
+2025-02-03T19:37:09.634Z ------- Booting 2v24.449 - 1.20 -------
+2025-02-03T19:37:09.752Z Reset flags: 0x1e
+2025-02-03T19:37:09.854Z Normal boot - showing main menu
+2025-02-03T19:39:50.628Z ------- Booting 2v24.449 - 1.20 -------
+2025-02-03T19:39:50.701Z Reset flags: 0x14
+2025-02-03T19:39:50.803Z Normal boot - showing main menu
+2025-04-21T20:02:03.635Z ------- Booting 2v25.359 - 1.29 -------
+2025-04-21T20:02:03.674Z Reset flags: 0x14
+2025-04-21T20:02:03.782Z Normal boot - showing main menu
+2025-04-22T18:43:53.102Z Error going to sleep: Error: Already sleeping
+2025-05-06T17:04:43.251Z Timeout tuning to 9900
+2025-05-18T02:26:50.163Z Timeout tuning to 9880
+2025-05-18T02:27:02.867Z Timeout tuning to 9870
+2025-05-18T02:28:30.872Z Timeout tuning to 9890
+2025-10-02T18:17:48.414Z Timeout tuning to 9930
+2025-11-18T18:38:20.540Z Timeout tuning to 10420
+2026-03-10T14:55:35.634Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-10T14:55:35.704Z Reset flags: 0x14
+2026-03-10T14:55:35.844Z Normal boot - showing main menu
+2026-03-10T14:56:32.577Z Error: Unable to list files : NO_PATH  at line 128 col 991 in .bootcde
+imageArray=fs.readdir("IMGS");imageArray.shift();imageArray....
+                            ^
+in function "buildImageArray" called from line 128 col 1097 in .bootcde
+...=fileCount}buildImageArray();let deleteSelect=false;let ThrobberInterv...
+                                        ^
+in function called from line 128 col 529 in .bootcde
+...),Pip.removeSubmenu(),c[a]())
+                              ^
+in function called from system
+
+2000-01-01T00:00:00.656Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:00:00.660Z Reset flags: 0x0e
+2000-01-01T00:00:00.806Z Normal boot - showing main menu
+2000-01-01T00:30:58.800Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:30:58.872Z Reset flags: 0x00
+2000-01-01T00:30:59.012Z Normal boot - showing main menu
+2000-01-01T00:39:22.826Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:39:22.898Z Reset flags: 0x00
+2000-01-01T00:39:23.038Z Normal boot - showing main menu
+2000-01-01T00:40:06.359Z Error: Function "flip" not found!  at line 13 col 5
+  g.flip();
+    ^
+in function "drawTerminal" called from line 52 col 14
+drawTerminal();
+             ^
+at line 178 col 76 in .bootcde
+...al(fs.readFile("USER/"+app))
+                              ^
+in function "startApp" called from line 178 col 344 in .bootcde
+startApp(b)
+          ^
+in function "b" called from line 179 col 13608 in .bootcde
+...ltin("OK")),"f"==(typeof b)[0]?b(c):"o"==(typeof b)[0]&&("n"==(typeof b.value)[0]?...
+                                                    ^
+in function "select" called from line 179 col 12300 in .bootcde
+a?c.move(-a):c.select()
+                      ^
+in function called from system
+
+2000-01-01T00:43:32.253Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:43:32.325Z Reset flags: 0x00
+2000-01-01T00:43:32.465Z Normal boot - showing main menu
+2000-01-01T00:00:00.653Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:00:00.658Z Reset flags: 0x0e
+2000-01-01T00:00:00.804Z Normal boot - showing main menu
+2000-01-01T00:05:51.975Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:05:51.980Z Reset flags: 0x00
+2000-01-01T00:05:52.120Z Normal boot - showing main menu
+2000-01-01T00:00:00.654Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:00:00.659Z Reset flags: 0x0e
+2000-01-01T00:00:00.804Z Normal boot - showing main menu
+2026-03-12T14:32:03.490Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:32:03.494Z Reset flags: 0x0e
+2026-03-12T14:32:03.634Z Normal boot - showing main menu
+2026-03-12T14:33:32.301Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:33:32.373Z Reset flags: 0x00
+2026-03-12T14:33:32.513Z Normal boot - showing main menu
+2026-03-12T14:37:33.360Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:37:33.433Z Reset flags: 0x00
+2026-03-12T14:37:33.573Z Normal boot - showing main menu
+2026-03-12T14:40:05.325Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:40:05.397Z Reset flags: 0x00
+2026-03-12T14:40:05.537Z Normal boot - showing main menu
+2026-03-12T14:42:17.784Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:42:17.823Z Reset flags: 0x00
+2026-03-12T14:42:17.963Z Normal boot - showing main menu
+2026-03-12T14:43:16.901Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:43:16.940Z Reset flags: 0x00
+2026-03-12T14:43:17.080Z Normal boot - showing main menu
+2026-03-12T14:44:49.669Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:44:49.707Z Reset flags: 0x00
+2026-03-12T14:44:49.848Z Normal boot - showing main menu
+2026-03-12T14:53:11.997Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T14:53:12.036Z Reset flags: 0x00
+2026-03-12T14:53:12.176Z Normal boot - showing main menu
+2026-03-12T15:05:40.075Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T15:05:40.114Z Reset flags: 0x00
+2026-03-12T15:05:40.255Z Normal boot - showing main menu
+2026-03-12T15:06:04.939Z ReferenceError: "Buzzer" is not defined  at line 1 col 7
+Buzzer.beep(20);
+      ^
+in function called from system
+
+2026-03-12T15:06:04.983Z ReferenceError: "Buzzer" is not defined  at line 1 col 7
+Buzzer.beep(20);
+      ^
+in function called from system
+
+2026-03-12T15:07:20.147Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T15:07:20.185Z Reset flags: 0x00
+2026-03-12T15:07:20.326Z Normal boot - showing main menu
+2026-03-12T15:09:26.157Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T15:09:26.196Z Reset flags: 0x00
+2026-03-12T15:09:26.336Z Normal boot - showing main menu
+2026-03-12T15:41:12.785Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T15:41:12.824Z Reset flags: 0x00
+2026-03-12T15:41:12.965Z Normal boot - showing main menu
+2026-03-12T15:48:23.980Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T15:48:24.019Z Reset flags: 0x00
+2026-03-12T15:48:24.160Z Normal boot - showing main menu
+2026-03-12T15:49:52.725Z ------- Booting 2v25.359 - 1.29.563 -------
+2026-03-12T15:49:52.764Z Reset flags: 0x00
+2026-03-12T15:49:52.905Z Normal boot - showing main menu
+2000-01-01T00:00:00.654Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:00:00.660Z Reset flags: 0x0e
+2000-01-01T00:00:00.806Z Normal boot - showing main menu
+2000-01-01T00:00:46.681Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:00:46.686Z Reset flags: 0x0e
+2000-01-01T00:00:46.827Z Normal boot - showing main menu
+2000-01-01T00:03:08.765Z Error: Can't have palette on >8 bit images  at line 13 col 37
+    g.drawString(bodyText[i], cx, cy);
+                                    ^
+in function "drawInterface" called from line 7 col 38
+    drawInterface("> SYSTEM LOG", cmd);
+                                     ^
+in function "processCommand" called from line 1 col 35
+processCommand(serialBuffer.trim());
+                                  ^
+in function called from system
+
+2000-01-01T00:03:17.992Z ReferenceError: "test" is not defined  at line 1 col 1
+test
+^
+
+2000-01-01T00:03:30.414Z ReferenceError: "NOTIF" is not defined  at line 1 col 6
+NOTIF|HELLO
+     ^
+
+2000-01-01T00:04:05.631Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T00:04:05.636Z Reset flags: 0x00
+2000-01-01T00:04:05.778Z Normal boot - showing main menu
+2000-01-01T17:59:15.462Z ReferenceError: "NOTIF" is not defined  at line 1 col 6
+NOTIF|HELLOHHHHH
+     ^
+
+2000-01-01T17:59:25.632Z ReferenceError: "SPOT" is not defined  at line 1 col 5
+SPOT|HELLOHHHHH
+    ^
+
+2000-01-01T17:59:27.402Z ReferenceError: "SPOT" is not defined  at line 1 col 5
+SPOT|HELLOHHHHH
+    ^
+
+2000-01-01T17:59:29.712Z ReferenceError: "SPOT" is not defined  at line 1 col 5
+SPOT|HELLOHHHHH
+    ^
+
+2000-01-01T17:59:35.412Z ReferenceError: "SPOT" is not defined  at line 1 col 5
+SPOT|HELLOHHHHH
+    ^
+
+2000-01-01T17:59:41.293Z ReferenceError: "SPOT" is not defined  at line 1 col 5
+SPOT|HELLOHHHHH
+    ^
+
+2000-01-01T17:59:51.733Z ReferenceError: "SPOT" is not defined  at line 1 col 5
+SPOT|HELLOHHHHH
+    ^
+
+2000-01-01T18:00:05.444Z ReferenceError: "SPOT" is not defined  at line 1 col 5
+SPOT|HELLOHHHHH
+    ^
+
+2000-01-01T18:00:15.826Z ReferenceError: "NOTIF" is not defined  at line 1 col 6
+NOTIF|HELLOHHHHH
+     ^
+
+2000-01-01T18:00:18.256Z ReferenceError: "NOTIF" is not defined  at line 1 col 6
+NOTIF|HELLOHHHHH
+     ^
+
+2000-01-01T18:00:24.826Z ReferenceError: "NOTIF" is not defined  at line 1 col 6
+NOTIF|HELLOHHHHH
+     ^
+
+2000-01-01T18:09:29.631Z ------- Booting 2v25.359 - 1.29.563 -------
+2000-01-01T18:09:29.637Z Reset flags: 0x24
+2077-10-23T14:47:00.124Z Normal boot - showing main menu
