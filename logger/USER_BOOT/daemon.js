@@ -29,23 +29,23 @@ function initUplinkDaemon() {
     Pip.originalShowMenu(menu);
   };
 
+  // Hook the physical rotary dial to clear the ghost state!
+  if (typeof checkMode === 'function') {
+    if (!Pip.originalCheckMode) Pip.originalCheckMode = checkMode;
+    checkMode = function() {
+      Pip.currentMenuTitle = ""; // Wipe the state the millisecond the dial turns
+      return Pip.originalCheckMode.apply(this, arguments);
+    };
+  }
+
+  // --- 3. GRAPHICS PIPELINE HOOK (The Freeze Frame) ---
   bC.flip = function(a) {
-    Pip.originalFlip(a);
     if (Pip.isNotifActive) {
-      g.setColor(0).fillRect(60, 90, 420, 250); 
-      g.setColor(g.theme.fg).drawRect(60, 90, 420, 250); 
-      g.setFont("Vector", 20).setFontAlign(-1, -1);
-      g.drawString(Pip.notifHeader, 70, 100).drawLine(70, 125, 410, 125);
-      g.setFont("Vector", 18);
-      var cx = 70, cy = 140;
-      for(var i=0; i < Pip.notifBody.length; i++) {
-        if(Pip.notifBody[i] === '\n' || Pip.notifBody[i] === '\r') continue; 
-        g.drawString(Pip.notifBody[i], cx, cy);
-        cx += 14; 
-        if(cx > 400) { cx = 70; cy += 24; }
-        if(cy > 230) break; 
-      }
+      // DROP THE FRAME! Freeze the physical LCD while the popup is visible.
+      // The Wand OS Clock will safely keep ticking in the hidden background buffer.
+      return; 
     }
+    Pip.originalFlip(a);
   };
 
   Pip.showNotification = function(header, text) {
@@ -53,11 +53,40 @@ function initUplinkDaemon() {
     Pip.notifHeader = header;
     Pip.notifBody = text;
     Pip.isNotifActive = true;
-    bC.flip(); 
+    
+    // DYNAMIC CENTERING MATH
+    var w = g.getWidth();
+    var h = g.getHeight();
+    var x1 = w * 0.1;  // 10% margin left
+    var y1 = h * 0.25; // 25% margin top
+    var x2 = w * 0.9;  // 10% margin right
+    var y2 = h * 0.75; // 25% margin bottom
+    
+    // DRAW DIRECTLY TO PHYSICAL LCD ONCE
+    g.setColor(0).fillRect(x1, y1, x2, y2); 
+    g.setColor(g.theme.fg).drawRect(x1, y1, x2, y2); 
+    
+    // CENTER ALIGN THE HEADER
+    g.setFont("Vector", 20).setFontAlign(0, -1); 
+    g.drawString(header, w / 2, y1 + 10);
+    g.drawLine(x1 + 10, y1 + 35, x2 - 10, y1 + 35);
+    
+    // LEFT ALIGN THE BODY TEXT
+    g.setFont("Vector", 18).setFontAlign(-1, -1);
+    var cx = x1 + 15, cy = y1 + 45;
+    for(var i = 0; i < text.length; i++) {
+      if(text[i] === '\n' || text[i] === '\r') continue; 
+      g.drawString(text[i], cx, cy);
+      cx += 14; 
+      if(cx > x2 - 15) { cx = x1 + 15; cy += 24; }
+      if(cy > y2 - 20) break; 
+    }
+    
+    // THE 5 SECOND KILL SWITCH
     if (Pip.notifTimeout) clearTimeout(Pip.notifTimeout);
     Pip.notifTimeout = setTimeout(function() {
       Pip.isNotifActive = false;
-      bC.flip(); 
+      bC.flip(); // UNFREEZE! Instantly blasts the pristine background buffer to the screen!
     }, 5000);
   };
 
