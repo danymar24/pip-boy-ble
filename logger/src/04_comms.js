@@ -2,6 +2,32 @@
 Pip.serialBuffer = "";
 Pip.isProcessing = false;
 
+// --- GEIGER COUNTER DAEMON ---
+Pip.geigerTimeout = null;
+
+Pip.handleGeiger = function (dangerLvl) {
+  if (Pip.geigerTimeout) clearTimeout(Pip.geigerTimeout);
+
+  // If danger is above 15%, start clicking
+  if (dangerLvl > 15) {
+    // Math: Higher danger = faster clicks (shorter delay)
+    // Maps a 15-100 danger level to a 1000ms - 100ms delay
+    var baseDelay = 1000 - ((dangerLvl - 15) / 85) * 900;
+
+    // Add +/- 150ms of pure randomness for that authentic, sporadic Geiger feel
+    var randomDelay = baseDelay + ((Math.random() * 300) - 150);
+    if (randomDelay < 50) randomDelay = 50; // Cap maximum speed
+
+    Pip.geigerTimeout = setTimeout(function tick() {
+      // Use a short tick/click sound from the native Wand OS library
+      if (typeof Pip.audioStart === 'function') {
+        Pip.audioStart("UI/ROT_V_1.wav"); // Fallback to "UI/ROT_V_1.wav" if TICK doesn't exist
+      }
+      Pip.handleGeiger(dangerLvl); // Loop it
+    }, randomDelay);
+  }
+};
+
 Pip.processBuffer = function () {
   if (Pip.serialBuffer.indexOf('\n') === -1) {
     Pip.isProcessing = false;
@@ -117,14 +143,28 @@ Pip.processBuffer = function () {
           var key = dashMsg.substring(0, dIdx).trim().toUpperCase();
           var val = dashMsg.substring(dIdx + 1).trim();
 
-          // Save state
           if (!Pip.telemetry) Pip.telemetry = {};
           Pip.telemetry[key] = val;
 
-          // Dynamically update the UI ONLY if the screen is active
-          if (Pip.currentMenuTitle === "HOME") {
-            Pip.drawHome();
+          // Trigger Daemons if it's weather/hazmat data
+          if (key === "WEAT") {
+            var envParts = val.split(" ");
+            var gVal = envParts.length > 2 ? parseFloat(envParts[2]) : 50;
+
+            // Calculate toxicity (0 to 100)
+            var dangerLvl = 100 - Math.max(0, Math.min(100, (gVal / 50) * 100));
+
+            // 1. Fire the Audio Geiger Counter
+            Pip.handleGeiger(dangerLvl);
+
+            // 2. Fire the Physical Hardware LEDs
+            if (typeof Pip.updateHardwareLEDs === 'function') {
+              Pip.updateHardwareLEDs(dangerLvl);
+            }
           }
+
+          // Update the screen if the user is looking at it
+          if (Pip.currentMenuTitle === "HOME") Pip.drawHome();
         }
       }
       // Inside Pip.processBuffer logic 
