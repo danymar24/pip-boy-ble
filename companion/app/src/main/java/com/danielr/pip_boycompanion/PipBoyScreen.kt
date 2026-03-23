@@ -1,6 +1,7 @@
 package com.danielr.pip_boycompanion
 
 import android.annotation.SuppressLint
+import android.app.TimePickerDialog
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
@@ -16,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +37,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.danielr.pip_boycompanion.ui.theme.PipBoyBackground
+import java.util.Locale
 
 @Composable
 fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
@@ -59,6 +62,9 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
                 composable("uplink_status") {
                     UplinkStatusScreen(viewModel = viewModel)
                 }
+                composable("alarm_module") {
+                    PipBoyAlarmScreen(viewModel = viewModel)
+                }
                 composable("pipboy_settings") {
                     PipBoySettingsScreen(viewModel = viewModel, themeViewModel = themeViewModel)
                 }
@@ -72,7 +78,11 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
 
 @Composable
 fun PipBoyBottomNav(navController: NavHostController) {
-    val items = listOf("uplink_status" to "UPLINK STATUS", "pipboy_settings" to "SETTINGS")
+    val items = listOf(
+        "uplink_status" to "UPLINK STATUS",
+        "alarm_module" to "ALARM MODULE",
+        "pipboy_settings" to "SETTINGS"
+    )
     val primaryColor = MaterialTheme.colorScheme.primary
     val dimColor = primaryColor.copy(alpha = 0.5f)
 
@@ -100,8 +110,9 @@ fun PipBoyBottomNav(navController: NavHostController) {
                     Text(
                         text = label,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        color = if (currentRoute == route) primaryColor else dimColor
+                        fontSize = 10.sp, // Adjusted slightly to fit 3 tabs
+                        color = if (currentRoute == route) primaryColor else dimColor,
+                        maxLines = 1
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
@@ -110,6 +121,224 @@ fun PipBoyBottomNav(navController: NavHostController) {
                     unselectedTextColor = dimColor
                 )
             )
+        }
+    }
+}
+
+@Composable
+fun PipBoyAlarmScreen(viewModel: PipBoyViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val dimColor = primaryColor.copy(alpha = 0.5f)
+    val alphaColor = primaryColor.copy(alpha = 0.2f)
+    val context = LocalContext.current
+
+    // Automatically fetch the latest alarm state when entering this tab
+    LaunchedEffect(Unit) {
+        viewModel.fetchAlarmStatus()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "ALARM INTERFACE",
+            color = primaryColor,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 18.sp
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Time Picker Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, primaryColor)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "WAKE TIME",
+                color = dimColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Retro large time button
+            Box(
+                modifier = Modifier
+                    .border(2.dp, primaryColor)
+                    .background(alphaColor)
+                    .clickable {
+                        // Safely parse existing time for the dialog
+                        val parts = uiState.alarmTime.split(":")
+                        val currentHour = parts.getOrNull(0)?.toIntOrNull() ?: 7
+                        val currentMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+
+                        TimePickerDialog(
+                            context,
+                            { _, selectedHour, selectedMinute ->
+                                val timeStr = String.format(Locale.getDefault(), "%02d:%02d", selectedHour, selectedMinute)
+                                viewModel.setAlarmTime(timeStr)
+                            },
+                            currentHour,
+                            currentMinute,
+                            true // 24-hour format
+                        ).show()
+                    }
+                    .padding(horizontal = 32.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = uiState.alarmTime,
+                    color = primaryColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 48.sp // Extra large retro clock font
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Master Switch Card
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, primaryColor)
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "MASTER POWER",
+                    color = primaryColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = if (uiState.isAlarmEnabled) "SYSTEM ARMED" else "SYSTEM DISARMED",
+                    color = if (uiState.isAlarmEnabled) primaryColor else dimColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp
+                )
+            }
+            Switch(
+                checked = uiState.isAlarmEnabled,
+                onCheckedChange = { viewModel.toggleAlarm(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = PipBoyBackground,
+                    checkedTrackColor = primaryColor,
+                    uncheckedThumbColor = dimColor,
+                    uncheckedTrackColor = PipBoyBackground,
+                    uncheckedBorderColor = primaryColor
+                )
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Config Cards Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Repeat Toggle
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .border(2.dp, primaryColor)
+                    .padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "REPEAT DAILY",
+                    color = primaryColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
+                Switch(
+                    checked = uiState.alarmRepeatDaily,
+                    onCheckedChange = { viewModel.toggleAlarmRepeat(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = PipBoyBackground,
+                        checkedTrackColor = primaryColor,
+                        uncheckedThumbColor = dimColor,
+                        uncheckedTrackColor = PipBoyBackground,
+                        uncheckedBorderColor = primaryColor
+                    )
+                )
+            }
+
+            // Sound Selection
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .border(2.dp, primaryColor)
+                    .padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "ALARM SOUND",
+                    color = primaryColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                val sounds = listOf("BEEP", "KLAXON", "CHIME")
+                val currentSound = sounds.getOrElse(uiState.alarmSoundIndex) { "UNKNOWN" }
+                
+                Button(
+                    onClick = { 
+                        // Simple retro cycle-through behavior
+                        val nextIndex = (uiState.alarmSoundIndex + 1) % sounds.size
+                        viewModel.setAlarmSound(nextIndex)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = alphaColor),
+                    shape = androidx.compose.ui.graphics.RectangleShape,
+                    modifier = Modifier.border(1.dp, primaryColor).fillMaxWidth()
+                ) {
+                    Text(
+                        text = currentSound,
+                        color = primaryColor,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Action Buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Button(
+                onClick = { viewModel.triggerAlarmTest() },
+                colors = ButtonDefaults.buttonColors(containerColor = alphaColor),
+                shape = androidx.compose.ui.graphics.RectangleShape,
+                modifier = Modifier.weight(1f).border(1.dp, primaryColor)
+            ) {
+                Text("TRIGGER ALARM", color = primaryColor, fontFamily = FontFamily.Monospace)
+            }
+            
+            Button(
+                onClick = { viewModel.snoozeAlarm() },
+                colors = ButtonDefaults.buttonColors(containerColor = alphaColor),
+                shape = androidx.compose.ui.graphics.RectangleShape,
+                modifier = Modifier.weight(1f).border(1.dp, primaryColor)
+            ) {
+                Text("SNOOZE", color = primaryColor, fontFamily = FontFamily.Monospace)
+            }
         }
     }
 }
@@ -153,19 +382,13 @@ fun PipBoySettingsScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewMo
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Green: 0x07E0
                 ColorButton("GREEN", Color(0xFF1AEF0B), 0x07E0, viewModel, themeViewModel, Modifier.weight(1f))
-                // Amber: 0xFFC0
                 ColorButton("AMBER", Color(0xFFFFB000), 0xFFC0, viewModel, themeViewModel, Modifier.weight(1f))
-                // White: 0xFFFF
                 ColorButton("WHITE", Color(0xFFFFFFFF), 0xFFFF, viewModel, themeViewModel, Modifier.weight(1f))
             }
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // Custom Color Picker implementation using sliders
-            // Keying the `remember` block to primaryColor ensures that when the DataStore loads the saved color
-            // in the background a few milliseconds after startup, the sliders immediately snap to match it!
             var customRed by remember(primaryColor) { mutableStateOf(primaryColor.red) }
             var customGreen by remember(primaryColor) { mutableStateOf(primaryColor.green) }
             var customBlue by remember(primaryColor) { mutableStateOf(primaryColor.blue) }
@@ -274,7 +497,6 @@ fun ColorButton(
         Text(text = name, color = color, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
     }
 }
-
 
 @Composable
 fun UplinkStatusScreen(viewModel: PipBoyViewModel) {

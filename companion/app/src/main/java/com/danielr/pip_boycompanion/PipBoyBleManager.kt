@@ -4,13 +4,16 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
@@ -22,8 +25,14 @@ object PipBoyBleManager {
     private val _debugLog = MutableStateFlow<String>("BLE Manager Initialized")
     val debugLog: StateFlow<String> = _debugLog.asStateFlow()
 
+    private val _incomingMessages = MutableSharedFlow<String>(extraBufferCapacity = 10)
+    val incomingMessages = _incomingMessages.asSharedFlow()
+
     private var bluetoothGatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
+    private var notifyCharacteristic: BluetoothGattCharacteristic? = null
+
+    private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     private fun log(message: String) {
         Log.d("PipBoyBLE", message)
@@ -44,6 +53,7 @@ object PipBoyBleManager {
                 log("Disconnected (Status: $status, State: $newState)")
                 _connectionState.value = ConnectionState.Disconnected
                 writeCharacteristic = null
+                notifyCharacteristic = null
             }
         }
 
@@ -59,40 +69,55 @@ object PipBoyBleManager {
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                var foundChar: BluetoothGattCharacteristic? = null
+                var foundRx: BluetoothGattCharacteristic? = null
+                var foundTx: BluetoothGattCharacteristic? = null
                 
-                // Search globally across all services
+                // Search globally across all services for RX and TX
                 for (srv in gatt.services) {
                     for (char in srv.characteristics) {
                         val uuidStr = char.uuid.toString().uppercase()
+                        val props = char.properties
                         
-                        // Match the exact RX Characteristic from the firmware
+                        // RX Matching (Writable)
                         if (uuidStr.contains("6E400002")) {
-                            foundChar = char
-                            log("Found EXACT target RX: ${uuidStr.substring(0, 8)}...")
-                            break
+                            foundRx = char
+                        } else if (foundRx == null && ((props and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 || 
+                                (props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0)) {
+                            // Some firmwares flip RX/TX
+                            if (uuidStr.contains("6E400003")) foundRx = char
                         }
-                        
-                        // Fallback: If firmware RX/TX are flipped, check if 0003 is writable
-                        if (uuidStr.contains("6E400003") && foundChar == null) {
-                            val props = char.properties
-                            if ((props and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 ||
-                                (props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
-                                foundChar = char
-                                log("Found writable TX (used as fallback): ${uuidStr.substring(0, 8)}...")
-                            }
+
+                        // TX Matching (Notifiable)
+                        if (uuidStr.contains("6E400003") && (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0) {
+                            foundTx = char
+                        } else if (foundTx == null && (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0) {
+                            foundTx = char
                         }
                     }
-                    if (foundChar != null && foundChar.uuid.toString().uppercase().contains("6E400002")) break
                 }
 
-                if (foundChar != null) {
-                    writeCharacteristic = foundChar
+                if (foundRx != null) {
+                    writeCharacteristic = foundRx
+                    log("Found RX: ${foundRx.uuid.toString().substring(0,8)}")
                 } else {
-                    // Collect fully uppercase strings of all characteristics for logging
-                    val available = gatt.services.flatMap { it.characteristics }.take(3).joinToString { it.uuid.toString().uppercase().substring(0, 8) }
-                    log("ERROR: RX not found! Has: $available...")
+                    log("ERROR: RX not found!")
                     writeCharacteristic = null
+                }
+
+                if (foundTx != null) {
+                    notifyCharacteristic = foundTx
+                    log("Found TX: ${foundTx.uuid.toString().substring(0,8)}. Enabling notifications...")
+                    gatt.setCharacteristicNotification(foundTx, true)
+                    
+                    val descriptor = foundTx.getDescriptor(CCCD_UUID)
+                    if (descriptor != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                        } else {
+                            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                            gatt.writeDescriptor(descriptor)
+                        }
+                    }
                 }
             } else {
                 log("Service discovery failed: $status")
@@ -106,10 +131,37 @@ object PipBoyBleManager {
         ) {
             super.onCharacteristicWrite(gatt, characteristic, status)
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                log("Write SUCCESS: ${characteristic.uuid.toString().substring(0,8)}")
+                log("Write SUCCESS")
             } else {
-                log("Write FAILED (Status: $status)")
+                log("Write FAILED ($status)")
             }
+        }
+
+        // Handle incoming notifications (Android < 13)
+        @Deprecated("Deprecated in Java")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            super.onCharacteristicChanged(gatt, characteristic)
+            val data = characteristic.value
+            if (data != null) {
+                val message = String(data, Charsets.UTF_8)
+                _incomingMessages.tryEmit(message)
+                log("Recv: ${message.trimEnd().take(15)}")
+            }
+        }
+
+        // Handle incoming notifications (Android 13+)
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            super.onCharacteristicChanged(gatt, characteristic, value)
+            val message = String(value, Charsets.UTF_8)
+            _incomingMessages.tryEmit(message)
+            log("Recv: ${message.trimEnd().take(15)}")
         }
     }
 
@@ -137,6 +189,7 @@ object PipBoyBleManager {
         bluetoothGatt?.close()
         bluetoothGatt = null
         writeCharacteristic = null
+        notifyCharacteristic = null
         _connectionState.value = ConnectionState.Disconnected
     }
 

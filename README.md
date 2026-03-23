@@ -48,7 +48,47 @@ Flash the sketch uplink.ino to your ESP32:
 
 ## 3. Software Configuration (Pip-OS)
 
-Using the community Web Serial File Manager, upload the file `daemon.js` inside the `/USER/` directory of the Pip-Boy. The Wand OS will automatically discover this and place it in your `INV -> APPS` menu. Launch it once after a battery drain to permanently arm the RAM.
+To circumvent Espruino's single-thread file loading limitations and tight RAM constraints, this project uses a build-time concatenation and minification pipeline. 
+
+The codebase is split into domain-specific modules for local development and compiled into a highly optimized, single-file payload for hardware deployment.
+
+### Directory Structure
+```text
+├── src/                    # Source files (Executed in alphabetical order)
+│   ├── 00_state.js         # Core variables, memory stores, and bootloader wrap
+│   ├── 01_hardware.js      # Rotary knob polling and C-Engine UI negotiation
+│   ├── 02_graphics.js      # Hostile UI takeover, popups, and display buffers
+│   ├── 03_apps.js          # Alarm cron jobs, Inbox UI, and native menu hooks
+│   └── 04_comms.js         # Asynchronous UART parser and bootloader execute
+├── build.js                # Node.js build pipeline
+├── package.json            # Project dependencies
+└── README.md
+```
+
+
+### 🚀 The Build Pipeline
+The build step uses Terser to aggressively compress the logic while strictly reserving native Wand OS C-Engine hooks (like bC.flip and MODE) to prevent kernel panics on the hardware.
+
+Prerequisites
+Node.js installed on your machine.
+
+Installation
+Clone the repository and install the build dependencies:
+
+```Bash
+npm install
+```
+#### Compiling the Firmware
+Whenever you make changes to the src/ files, run the build script:
+
+```Bash
+node build.js
+```
+
+* What it does: Concatenates all src/*.js files, runs them through the Terser minifier, and calculates the byte-size savings.
+* Output: Generates a highly compressed dist/daemon.min.js file ready for the hardware.
+
+Using the community Web Serial File Manager, upload the file `daemon.min.js` inside the `/USER_BOOT/` directory of the Pip-Boy. The Wand OS will automatically discover this and place it in your `INV -> APPS` menu. Launch it once after a battery drain to permanently arm the RAM.
 
 ---
 
@@ -76,3 +116,20 @@ When the Android app subscribes to the TX Characteristic, the Pip-Boy will push 
 
 * **Alarm Status Response:** `ALARM_STATUS|[HH:MM or "OFF"]\\n`
   *(Triggered by the `ALARM|GET` command)*
+
+## 📡 Sensor & Bluetooth Integrations
+This firmware is designed to interface over UART (Serial3) with an external ESP32 microcontroller bridging Bluetooth LE and I2C hardware sensors.
+
+### Supported Hardware:
+
+* BME680: Environmental (Temp, Humidity, VOC Air Quality)
+* MAX30102: Biometrics (Heart Rate, SpO2)
+* MPU6050: Gyroscope/Accelerometer (Raise-to-Wake Gesture)
+
+### Serial Command API:
+
+* NOTIF|Sender:Message - Triggers a 5-second screen freeze popup.
+* ALARM|GET - Requests current alarm state from the Pip-Boy cron job.
+* BIO|BPM:85 - Updates the custom Biometrics Dashboard on the STAT tab.
+* ENV|TEMP:72F - Updates the Hazmat Dashboard on the INV tab.
+* GYRO|GESTURE:RAISE - Forces the UI to wake and snap to the STAT tab.

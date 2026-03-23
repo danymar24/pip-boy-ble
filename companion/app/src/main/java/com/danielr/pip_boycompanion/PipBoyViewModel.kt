@@ -29,7 +29,11 @@ data class PipBoyUiState(
     val savedMacAddress: String? = null,
     val terminalText: String = "",
     val isBridgeEnabled: Boolean = false,
-    val debugLog: String = ""
+    val debugLog: String = "",
+    val isAlarmEnabled: Boolean = false,
+    val alarmTime: String = "07:00",
+    val alarmRepeatDaily: Boolean = false,
+    val alarmSoundIndex: Int = 0
 )
 
 class PipBoyViewModel(
@@ -87,6 +91,30 @@ class PipBoyViewModel(
                 _uiState.value = _uiState.value.copy(debugLog = log)
             }
         }
+
+        // Process incoming messages from Pip-Boy
+        viewModelScope.launch {
+            PipBoyBleManager.incomingMessages.collect { message ->
+                val cleanMsg = message.trim()
+                if (cleanMsg.startsWith("ALARM_STATUS|")) {
+                    // Example Format: ALARM_STATUS|ON|07:30|1|0
+                    val parts = cleanMsg.removePrefix("ALARM_STATUS|").split("|")
+                    if (parts.size >= 4) {
+                        val enabled = parts[0] == "ON"
+                        val time = parts[1]
+                        val repeat = parts[2] == "1"
+                        val sound = parts[3].toIntOrNull() ?: 0
+                        
+                        _uiState.value = _uiState.value.copy(
+                            isAlarmEnabled = enabled,
+                            alarmTime = time,
+                            alarmRepeatDaily = repeat,
+                            alarmSoundIndex = sound
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun toggleBridgeEnabled(enabled: Boolean) {
@@ -136,16 +164,11 @@ class PipBoyViewModel(
         PipBoyBleManager.sendData(command)
     }
 
-    /**
-     * Converts an Android Compose Color (RGB888) to a 16-bit RGB565 integer
-     * specifically for the Pip-boy Wand OS firmware.
-     */
     private fun colorToRGB565(color: Color): Int {
         val r = (color.red * 255).toInt()
         val g = (color.green * 255).toInt()
         val b = (color.blue * 255).toInt()
 
-        // RGB565 format: RRRRRGGG GGGBBBBB
         val r5 = (r shr 3) and 0x1F
         val g6 = (g shr 2) and 0x3F
         val b5 = (b shr 3) and 0x1F
@@ -154,13 +177,48 @@ class PipBoyViewModel(
     }
 
     fun syncColor(color: Color, predefinedRGB565: Int? = null) {
-        // Use the predefined exact values if available, otherwise calculate dynamically
         val rgb565Value = predefinedRGB565 ?: colorToRGB565(color)
-        
-        // Command requires string conversion of the decimal integer value
         val command = "SET|COLOR:$rgb565Value\n"
         PipBoyBleManager.sendData(command)
     }
+
+    // --- ALARM MODULE COMMANDS ---
+    
+    fun fetchAlarmStatus() {
+        PipBoyBleManager.sendData("ALARM|GET\n")
+    }
+    
+    fun toggleAlarm(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(isAlarmEnabled = enabled)
+        val command = if (enabled) "ALARM|ON\n" else "ALARM|OFF\n"
+        PipBoyBleManager.sendData(command)
+    }
+    
+    fun setAlarmTime(hhmm: String) {
+        _uiState.value = _uiState.value.copy(alarmTime = hhmm)
+        PipBoyBleManager.sendData("ALARM|SET:$hhmm\n")
+    }
+    
+    fun toggleAlarmRepeat(repeat: Boolean) {
+        _uiState.value = _uiState.value.copy(alarmRepeatDaily = repeat)
+        val command = if (repeat) "ALARM|REPEAT:1\n" else "ALARM|REPEAT:0\n"
+        PipBoyBleManager.sendData(command)
+    }
+    
+    fun setAlarmSound(soundIndex: Int) {
+        _uiState.value = _uiState.value.copy(alarmSoundIndex = soundIndex)
+        PipBoyBleManager.sendData("ALARM|SOUND:$soundIndex\n")
+    }
+    
+    fun triggerAlarmTest() {
+        PipBoyBleManager.sendData("ALARM|TEST\n")
+    }
+    
+    fun snoozeAlarm() {
+        PipBoyBleManager.sendData("ALARM|SNOOZE\n")
+    }
+
+    // --- TERMINAL COMMANDS ---
 
     fun updateTerminalText(text: String) {
         _uiState.value = _uiState.value.copy(terminalText = text)

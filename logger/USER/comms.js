@@ -3,7 +3,7 @@ g.setFontAlign(-1, -1);
 
 function drawInterface(header, bodyText) {
   g.clear();
-  g.setColor("#14FF14");
+  g.setColor(g.theme.fg);
   g.setFont("Vector", 18);
   g.drawString(header, 30, 40);
   g.drawLine(30, 60, 290, 60);
