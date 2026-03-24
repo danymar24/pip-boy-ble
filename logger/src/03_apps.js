@@ -174,7 +174,6 @@ Pip.drawHome = function () {
         if (dangerLvl > 60) {
             // CRITICAL DANGER: Red LED & Bar
             bC.setColor(63488); // 16-bit RED (0xF800)
-            bC.fillCircle(305, 182, 6);
             if (dangerLvl > 2) bC.fillRect(182, 177, 182 + dangerLvl, 187);
             bC.setColor(g.theme.fg); // Reset to CRT theme
             bC.drawString("! CRITICAL !", 180, 200);
@@ -182,14 +181,12 @@ Pip.drawHome = function () {
         } else if (dangerLvl > 15) {
             // WARNING: Yellow LED
             bC.setColor(65504); // 16-bit YELLOW (0xFFE0)
-            bC.fillCircle(305, 182, 6);
             bC.setColor(g.theme.fg); // Reset to CRT theme
             if (dangerLvl > 2) bC.fillRect(182, 177, 182 + dangerLvl, 187);
 
         } else {
             // SAFE: Empty/Hollow LED Indicator
             bC.setColor(g.theme.fg);
-            bC.drawCircle(305, 182, 6);
         }
 
     } else {
