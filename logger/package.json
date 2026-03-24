@@ -9,6 +9,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "serialport": "^13.0.0",
     "terser": "^5.46.1"
   }
 }

@@ -172,11 +172,11 @@ Pip.processBuffer = function () {
         var pwrCmd = parts[1].trim().toUpperCase();
 
         if (pwrCmd === "WAKE") {
-          Pip.setPowerState("WAKE");
+          Pip.powerButtonHandler(); // Simulate a physical press of the power button to wake the device
           Pip.audioStart("UI/ACTIVATE.wav"); // Native Wand OS sound [cite: 3]
         }
         else if (pwrCmd === "SLEEP") {
-          Pip.setPowerState("SLEEP");
+          Pip.powerButtonHandler(); // Simulate a physical press of the power button to wake the device
           Pip.audioStart("UI/CANCEL.wav");
         }
         else if (pwrCmd === "DIM") {
