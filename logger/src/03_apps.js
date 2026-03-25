@@ -163,32 +163,38 @@ Pip.drawHome = function () {
         bC.drawRect(180, 150, 284, 164);
         bC.fillRect(182, 152, 182 + hWidth, 162);
 
-        // --- METER 3: TOXICITY / RADS ---
-        // Invert Gas logic: 0 kOhm = Max Danger (100px), 50+ kOhm = Safe (0px)
+        // --- METER 3: TOXICITY / RADS & LED ---
         bC.drawString("TOX:  " + gasStr, 30, 175);
-        var dangerLvl = 100 - Math.max(0, Math.min(100, (gVal / 50) * 100));
+
+        // 1. Bare-metal parse
+        var gVal = parseFloat(gasStr);
+        if (isNaN(gVal)) gVal = 60; // Fallback to your new safe baseline
+
+        // Auto-scale raw Ohms to kOhms
+        if (gVal > 1000) {
+            gVal = gVal / 1000;
+        }
+
+        // 2. Calculate Danger Level (Calibrated to 60kOhm max)
+        // 60kOhm = 0% Danger (Empty Bar). 0kOhm = 100% Danger (Full Bar).
+        var dangerLvl = 100 - Math.max(0, Math.min(100, (gVal / 60) * 100));
+        var dangerWidth = Math.floor(dangerLvl);
 
         bC.drawRect(180, 175, 284, 189); // Empty Bar outline
 
-        // Draw the LED based on the danger level
-        if (dangerLvl > 60) {
-            // CRITICAL DANGER: Red LED & Bar
-            bC.setColor(63488); // 16-bit RED (0xF800)
-            if (dangerLvl > 2) bC.fillRect(182, 177, 182 + dangerLvl, 187);
-            bC.setColor(g.theme.fg); // Reset to CRT theme
-            bC.drawString("! CRITICAL !", 180, 200);
-
-        } else if (dangerLvl > 15) {
-            // WARNING: Yellow LED
-            bC.setColor(65504); // 16-bit YELLOW (0xFFE0)
-            bC.setColor(g.theme.fg); // Reset to CRT theme
-            if (dangerLvl > 2) bC.fillRect(182, 177, 182 + dangerLvl, 187);
-
-        } else {
-            // SAFE: Empty/Hollow LED Indicator
-            bC.setColor(g.theme.fg);
+        // 3. Draw the dynamic bar if we have a valid width
+        if (dangerWidth > 0 && !isNaN(dangerWidth)) {
+            bC.fillRect(182, 177, 182 + dangerWidth, 187);
         }
 
+        // Draw the UI LED and our new Debug Text
+        if (dangerLvl > 60) {
+            bC.drawString("! CRITICAL !", 180, 200);
+
+        } else if (dangerLvl > 30) {
+            bC.drawString("WARNING", 180, 200);
+
+        }
     } else {
         bC.setFont("Vector", 16);
         bC.drawString("SENSORS OFFLINE...", 30, 130);

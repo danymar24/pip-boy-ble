@@ -66,13 +66,15 @@ async function build() {
 async function uploadToPipboy(code, portPath) {
     console.log(`\n-> Initiating Upload to Pipboy on ${portPath}...`);
 
+    // Define the exact path on the Pipboy's SD card
+    const targetPath = 'USER_BOOT/daemon.min.js';
+
     return new Promise((resolve, reject) => {
         const port = new SerialPort({ path: portPath, baudRate: 115200 });
 
         port.on('open', async () => {
             console.log("-> Serial port opened. Preparing Pipboy file system...");
 
-            // Helper function to send a command and wait for the SD card to process it
             const sendCmd = (str, delayMs = 50) => {
                 return new Promise(res => {
                     port.write(str, () => {
@@ -84,34 +86,38 @@ async function uploadToPipboy(code, portPath) {
             };
 
             try {
-                // \x10 turns off the Espruino terminal echo
                 await sendCmd('\x10', 100);
 
-                // Step 1: Create/Clear the file on the SD Card
-                console.log("-> Initializing daemon.min.js...");
-                await sendCmd(`require('fs').writeFileSync('daemon.min.js', '');\n`, 200);
+                // Ensure the USER_BOOT directory exists before trying to write to it
+                // We wrap it in a try/catch so it doesn't crash if the folder is already there
+                console.log("-> Checking directories...");
+                await sendCmd(`try{require('fs').mkdirSync('USER_BOOT');}catch(e){}\n`, 100);
 
-                // Step 2: Append the file in small, safe chunks
+                // Use the targetPath variable
+                console.log(`-> Initializing ${targetPath}...`);
+                await sendCmd(`require('fs').writeFileSync('${targetPath}', '');\n`, 200);
+
                 const chunkSize = 256;
                 console.log(`-> Writing data in chunks of ${chunkSize} bytes...`);
 
                 for (let i = 0; i < code.length; i += chunkSize) {
                     const chunk = code.substring(i, i + chunkSize);
-                    // JSON.stringify safely wraps this specific chunk in quotes and escapes characters
                     const safeChunk = JSON.stringify(chunk);
 
-                    const cmd = `require('fs').appendFileSync('daemon.min.js', ${safeChunk});\n`;
-                    await sendCmd(cmd, 30); // 30ms delay gives the SD card time to write
+                    // Use the targetPath variable here too
+                    const cmd = `require('fs').appendFileSync('${targetPath}', ${safeChunk});\n`;
+                    await sendCmd(cmd, 30);
 
-                    // Print a dot to the console so you know it's working
                     process.stdout.write('.');
                 }
 
-                console.log("\n-> Upload Complete!");
+                console.log("\n-> Upload Complete! Rebooting RobCo OS...");
 
-                // Send a final newline and \x10 to re-enable terminal echo
-                await sendCmd('\n\x10', 50);
+                // Send \x10 to re-enable echo, then load() to trigger the soft reboot
+                await sendCmd('\n\x10load();\n', 500);
 
+                // We use a 500ms delay above so the command fully transmits 
+                // before Node.js forcefully closes the serial connection.
                 port.close();
                 resolve();
 
