@@ -17,12 +17,12 @@ Pip.drawMonitor = function () {
     bC.clear(1);
     bC.setColor(g.theme.fg);
 
-    bC.drawRect(5, 20, 315, 45);
+    bC.drawRect(5, 20, Pip.appScreenXBound, Pip.appScreenYBound);
     bC.setFont("Vector", 18);
     bC.setFontAlign(0, 0);
     bC.drawString("RAW TELEMETRY (SERIAL3)", 160, 33);
 
-    bC.drawRect(5, 50, 315, 230);
+    bC.drawRect(5, 50, Pip.appScreenXBound, Pip.appScreenYBound);
     bC.setFont("Vector", 12);
     bC.setFontAlign(-1, -1);
 

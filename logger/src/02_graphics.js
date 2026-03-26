@@ -3,6 +3,8 @@
 // --- 5. POWER & DIMMING MANAGEMENT ---
 Pip.isDimmed = false;
 Pip.isAsleep = false;
+Pip.appScreenXBound = 380;
+Pip.appScreenYBound = 204;
 
 Pip.setPowerState = function (state) {
     if (state === "WAKE") {

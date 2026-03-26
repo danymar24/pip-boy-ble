@@ -12,17 +12,17 @@ Pip.drawSpotify = function () {
     if (!Pip.isSpotifyActive) return;
     bC.clear(1);
     bC.setColor(g.theme.fg);
-    bC.drawRect(10, 20, 310, 220);
+    bC.drawRect(10, 20, Pip.appScreenXBound, Pip.appScreenYBound);
     bC.setFontAlign(0, 0);
 
     if (Pip.spotifySong === "") {
         bC.setFont("Vector", 25);
-        bC.drawString("NOT PLAYING", 160, 120);
+        bC.drawString("NOT PLAYING", Pip.appScreenXBound / 2, Pip.appScreenYBound / 2);
     } else {
         bC.setFont("Vector", 30);
-        bC.drawString(Pip.spotifySong, 160, 100);
+        bC.drawString(Pip.spotifySong, Pip.appScreenXBound / 2, Pip.appScreenYBound / 2);
         bC.setFont("Vector", 18);
-        bC.drawString(Pip.spotifyArtist, 160, 140);
+        bC.drawString(Pip.spotifyArtist, Pip.appScreenXBound / 2, Pip.appScreenYBound / 2 + 40);
     }
     bC.flip();
 };
