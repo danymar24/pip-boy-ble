@@ -62,7 +62,27 @@ class MyCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
-// Add these variables to your globals
+// --- Tap Detection Globals ---
+float lastAccelZ = 0;
+unsigned long lastTapTime = 0;
+const float tapThreshold = 15.0; // Adjust based on sensitivity (15 m/s^2 is a sharp jolt)
+const int tapDebounce = 300;     // Ms between allowed taps
+
+void detectTap(sensors_event_t a) {
+  // We look for a sudden change (delta) in acceleration
+  float deltaZ = abs(a.acceleration.z - lastAccelZ);
+  
+  if (deltaZ > tapThreshold && (millis() - lastTapTime > tapDebounce)) {
+    lastTapTime = millis();
+    
+    // Send the command to the Pip-Boy via Serial1
+    Serial1.print("ACT|TAP\n"); 
+    Serial.println("Gesture: Tap Detected!");
+  }
+  
+  lastAccelZ = a.acceleration.z;
+}
+
 float lastAy = 0;
 bool isAwake = true;
 unsigned long lastMoveTime = 0;
@@ -80,7 +100,7 @@ void detectLiftToWake(sensors_event_t a, sensors_event_t g) {
   if (verticalTilt && faceUp) {
     if (!isAwake) {
       isAwake = true;
-      Serial1.print("PWR|WAKE\n"); // Send custom power command to JS
+      Serial1.print("ACT|LIFTED\n"); // Send custom power command to JS
       Serial.println("Gesture: Wake Triggered");
     }
     lastMoveTime = millis();
@@ -88,7 +108,7 @@ void detectLiftToWake(sensors_event_t a, sensors_event_t g) {
     // Auto-sleep logic: If no 'viewing' orientation for 10 seconds
     if (isAwake && (millis() - lastMoveTime > 10000)) {
       isAwake = false;
-      Serial1.print("PWR|SLEEP\n");
+      Serial1.print("ACT|DOWN\n");
       Serial.println("Gesture: Sleep Triggered");
     }
   }
@@ -127,7 +147,8 @@ void EnvTask(void * parameter) {
     mpu.getEvent(&a, &g, &temp);
     
     detectLiftToWake(a, g); // Check for gesture every 500ms
-    
+    detectTap(a);
+
     if (bme.performReading()) {
       float tempF = (bme.temperature * 1.8) + 32.0;
       // Formatting for the Pip-Boy's INV tab hijack
@@ -176,6 +197,16 @@ void setup() {
 void loop() {
   if (Serial1.available()) {
     String fromPipBoy = Serial1.readStringUntil('\n');
+
+    String commandCheck = fromPipBoy;
+    commandCheck.trim(); 
+
+    if (commandCheck == "SYS|REBOOT") {                                                                                                                                                                                                                                                                                                                                                                         
+      Serial.println("Reboot command received from Pip-Boy! Restarting ESP32...");
+      delay(500); // Brief pause to ensure the serial monitor prints the message
+      ESP.restart();  // This triggers a hard reset of the ESP32
+    }
+
     fromPipBoy += "\n";
     if (deviceConnected) {
       pTxCharacteristic->setValue(fromPipBoy.c_str());

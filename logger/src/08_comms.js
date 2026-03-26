@@ -40,6 +40,21 @@ Pip.processBuffer = function () {
   for (var i = 0; i < lines.length; i++) {
     var cmd = lines[i].trim();
     if (cmd.length === 0) continue;
+
+    if (typeof Pip.logMonitor === 'function') {
+      Pip.logMonitor(cmd);
+    }
+
+    if (cmd.indexOf("SPOT|INFO:") === 0) {
+      var infoData = cmd.split(":")[1] || "";
+      var trackData = infoData.split("|"); // Splits "Song|Artist"
+      Pip.spotifySong = trackData[0] || "";
+      Pip.spotifyArtist = trackData[1] || "";
+      console.log(`Spotify Update - Song: "${Pip.spotifySong}", Artist: "${Pip.spotifyArtist}"`);
+      // If the user is currently looking at the Spotify screen, redraw it instantly
+      if (Pip.isSpotifyActive) Pip.drawSpotify();
+    }
+
     var parts = cmd.split("|");
     if (parts.length > 1) {
 
@@ -190,8 +205,8 @@ Pip.processBuffer = function () {
   else Pip.isProcessing = false;
 };
 
-Pip.handleData = function (d) {
-  Pip.serialBuffer += d;
+Pip.handleData = function (data) {
+  Pip.serialBuffer += data;
   if (Pip.serialBuffer.length > 512) Pip.serialBuffer = "";
   if (Pip.serialBuffer.indexOf('\n') !== -1 && !Pip.isProcessing) {
     Pip.isProcessing = true;
