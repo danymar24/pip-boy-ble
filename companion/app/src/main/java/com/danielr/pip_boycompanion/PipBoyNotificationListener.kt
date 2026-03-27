@@ -14,14 +14,15 @@ import android.service.notification.StatusBarNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class PipBoyNotificationListener : NotificationListenerService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    
     private var isBridgeEnabled = false
+    private var allowedApps = emptySet<String>()
 
     private var activeMediaController: MediaController? = null
     private var lastSentTitle = ""
@@ -52,10 +53,11 @@ class PipBoyNotificationListener : NotificationListenerService() {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         
         serviceScope.launch {
-            combine(dataStore.bridgeEnabled, dataStore.deviceMac) { enabled, mac ->
-                Pair(enabled, mac)
-            }.collect { (enabled, mac) ->
+            combine(dataStore.bridgeEnabled, dataStore.deviceMac, dataStore.allowedApps) { enabled, mac, apps ->
+                Triple(enabled, mac, apps)
+            }.collect { (enabled, mac, apps) ->
                 isBridgeEnabled = enabled
+                allowedApps = apps
                 
                 if (enabled && mac != null) {
                     PipBoyBleManager.connect(applicationContext, mac)
@@ -191,6 +193,9 @@ class PipBoyNotificationListener : NotificationListenerService() {
         if (PipBoyBleManager.connectionState.value != ConnectionState.Connected) return
         
         sbn?.let {
+            // Apply filtering logic: skip notifications from apps that are not allowed.
+            if (!allowedApps.contains(it.packageName)) return
+            
             val extras = it.notification.extras
             val appName = getAppName(it.packageName)
             
@@ -221,6 +226,8 @@ class PipBoyNotificationListener : NotificationListenerService() {
         }
         
         sbn?.let {
+            if (!allowedApps.contains(it.packageName)) return
+
             val appName = getAppName(it.packageName)
             val formattedString = "CLEAR|$appName\n"
             PipBoyBleManager.sendData(formattedString)

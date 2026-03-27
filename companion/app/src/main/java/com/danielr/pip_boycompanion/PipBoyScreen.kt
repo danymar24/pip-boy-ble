@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -45,6 +46,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.danielr.pip_boycompanion.ui.theme.PipBoyBackground
 import java.util.Locale
+import android.widget.ImageView
 
 @Composable
 fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
@@ -63,9 +65,12 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
         ) { innerPadding ->
             NavHost(
                 navController = navController,
-                startDestination = "uplink_status",
+                startDestination = "stat_module",
                 modifier = Modifier.padding(innerPadding)
             ) {
+                composable("stat_module") {
+                    PipBoyStatScreen(viewModel = viewModel)
+                }
                 composable("uplink_status") {
                     UplinkStatusScreen(viewModel = viewModel)
                 }
@@ -76,7 +81,17 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
                     PipBoyRadioScreen(viewModel = viewModel)
                 }
                 composable("pipboy_settings") {
-                    PipBoySettingsScreen(viewModel = viewModel, themeViewModel = themeViewModel)
+                    PipBoySettingsScreen(
+                        viewModel = viewModel, 
+                        themeViewModel = themeViewModel,
+                        onNavigateToFilter = { navController.navigate("app_filter") }
+                    )
+                }
+                composable("app_filter") {
+                    PipBoyAppFilterScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
@@ -89,6 +104,7 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
 @Composable
 fun PipBoyBottomNav(navController: NavHostController) {
     val items = listOf(
+        "stat_module" to "STAT",
         "uplink_status" to "UPLINK",
         "alarm_module" to "ALARM",
         "radio_module" to "RADIO",
@@ -121,7 +137,7 @@ fun PipBoyBottomNav(navController: NavHostController) {
                     Text(
                         text = label,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp, // Adjusted to fit 4 tabs nicely
+                        fontSize = 8.sp, // Adjusted to fit 5 tabs
                         color = if (currentRoute == route) primaryColor else dimColor,
                         maxLines = 1
                     )
@@ -132,6 +148,229 @@ fun PipBoyBottomNav(navController: NavHostController) {
                     unselectedTextColor = dimColor
                 )
             )
+        }
+    }
+}
+
+@Composable
+fun PipBoyStatScreen(viewModel: PipBoyViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "ENVIRONMENTAL DASHBOARD",
+            color = primaryColor,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 18.sp
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+
+        val weather = uiState.weatherData
+
+        // Internal Temp: 0 to 120
+        val tempProgress = (weather.temperature / 120f).coerceIn(0f, 1f)
+        RobCoProgressBar(
+            label = "INTERNAL TEMP",
+            valueText = "${weather.temperature}°F",
+            progress = tempProgress,
+            color = primaryColor
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Humidity: 0 to 100
+        val humProgress = (weather.humidity / 100f).coerceIn(0f, 1f)
+        RobCoProgressBar(
+            label = "HUMIDITY",
+            valueText = "${weather.humidity}%",
+            progress = humProgress,
+            color = primaryColor
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Toxicity: 0 to 100 kOhm
+        val toxProgress = (weather.toxicity / 100f).coerceIn(0f, 1f)
+        RobCoProgressBar(
+            label = "AIR QUALITY",
+            valueText = "${weather.toxicity} kOhm",
+            progress = toxProgress,
+            color = primaryColor
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Environmental Status Text
+        val isNominal = weather.toxicity > 20f
+        val statusText = if (isNominal) "ENVIRONMENTAL SEAL: SYSTEMS NOMINAL" else "WARNING: TOXICITY DETECTED (RAD-X ADVISED)"
+        val statusColor = if (isNominal) primaryColor else Color.Red
+
+        Text(
+            text = statusText,
+            color = statusColor,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, statusColor)
+                .padding(16.dp)
+        )
+    }
+}
+
+@Composable
+fun RobCoProgressBar(label: String, valueText: String, progress: Float, color: Color) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = label, color = color, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+            Text(text = valueText, color = color, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(16.dp)
+                .border(1.dp, color)
+                .padding(2.dp)
+        ) {
+            val segmentWidth = 6.dp.toPx()
+            val segmentGap = 2.dp.toPx()
+            val totalSegmentWidth = segmentWidth + segmentGap
+            val availableWidth = size.width
+            val filledWidth = availableWidth * progress
+
+            var currentX = 0f
+            while (currentX + segmentWidth <= filledWidth) {
+                drawRect(
+                    color = color,
+                    topLeft = Offset(currentX, 0f),
+                    size = androidx.compose.ui.geometry.Size(segmentWidth, size.height)
+                )
+                currentX += totalSegmentWidth
+            }
+        }
+    }
+}
+
+@Composable
+fun PipBoyAppFilterScreen(viewModel: PipBoyViewModel, onBack: () -> Unit) {
+    val uiState by viewModel.uiState.collectAsState()
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val alphaColor = primaryColor.copy(alpha = 0.2f)
+
+    LaunchedEffect(Unit) {
+        if (uiState.installedApps.isEmpty()) {
+            viewModel.loadInstalledApps()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "< BACK",
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable { onBack() }
+                    .padding(end = 16.dp, top = 8.dp, bottom = 8.dp)
+            )
+            Text(
+                text = "COMM. ENCRYPTION",
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 16.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "SELECT AUTHORIZED UPLINK SOURCES:",
+            color = primaryColor.copy(alpha = 0.7f),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .border(2.dp, primaryColor)
+                .padding(8.dp)
+        ) {
+            items(uiState.installedApps) { app ->
+                val isAllowed = uiState.allowedApps.contains(app.packageName)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .border(1.dp, alphaColor)
+                        .clickable { viewModel.toggleAppAllowance(app.packageName, !isAllowed) }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        AndroidView(
+                            factory = { ctx ->
+                                ImageView(ctx).apply {
+                                    setImageDrawable(app.icon)
+                                }
+                            },
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = app.name.uppercase(Locale.getDefault()),
+                                color = primaryColor,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 14.sp,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = app.packageName,
+                                color = primaryColor.copy(alpha = 0.5f),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 8.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = isAllowed,
+                        onCheckedChange = { viewModel.toggleAppAllowance(app.packageName, it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = PipBoyBackground,
+                            checkedTrackColor = primaryColor,
+                            uncheckedThumbColor = primaryColor.copy(alpha = 0.5f),
+                            uncheckedTrackColor = PipBoyBackground,
+                            uncheckedBorderColor = primaryColor
+                        )
+                    )
+                }
+            }
         }
     }
 }
@@ -459,9 +698,14 @@ fun PipBoyAlarmScreen(viewModel: PipBoyViewModel) {
 }
 
 @Composable
-fun PipBoySettingsScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
+fun PipBoySettingsScreen(
+    viewModel: PipBoyViewModel, 
+    themeViewModel: ThemeViewModel,
+    onNavigateToFilter: () -> Unit
+) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val alphaColor = primaryColor.copy(alpha = 0.2f)
+    val dimColor = primaryColor.copy(alpha = 0.5f)
 
     Column(
         modifier = Modifier
@@ -583,6 +827,44 @@ fun PipBoySettingsScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewMo
             ) {
                 Text(
                     text = "SYNC SYSTEM TIME",
+                    color = primaryColor,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Comm Encryption Section (App Filter)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, primaryColor)
+                .padding(8.dp)
+        ) {
+            Text(
+                text = "COMM. ENCRYPTION",
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            )
+            Text(
+                text = "APP WHITELIST SYSTEM",
+                color = dimColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onNavigateToFilter,
+                colors = ButtonDefaults.buttonColors(containerColor = alphaColor),
+                shape = androidx.compose.ui.graphics.RectangleShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, primaryColor)
+            ) {
+                Text(
+                    text = "CONFIGURE PERMISSIONS",
                     color = primaryColor,
                     fontFamily = FontFamily.Monospace
                 )

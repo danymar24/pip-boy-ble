@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -18,6 +19,7 @@ class PipBoyDataStore(private val context: Context) {
         val DEVICE_MAC_KEY = stringPreferencesKey("device_mac")
         val BRIDGE_ENABLED_KEY = booleanPreferencesKey("bridge_enabled")
         val THEME_COLOR_KEY = longPreferencesKey("theme_color")
+        val ALLOWED_APPS_KEY = stringSetPreferencesKey("allowed_apps")
     }
 
     val deviceMac: Flow<String?> = context.dataStore.data
@@ -33,6 +35,11 @@ class PipBoyDataStore(private val context: Context) {
     val themeColor: Flow<Long?> = context.dataStore.data
         .map { preferences ->
             preferences[THEME_COLOR_KEY]
+        }
+
+    val allowedApps: Flow<Set<String>> = context.dataStore.data
+        .map { preferences ->
+            preferences[ALLOWED_APPS_KEY] ?: emptySet()
         }
 
     suspend fun saveDeviceMac(mac: String?) {
@@ -54,6 +61,12 @@ class PipBoyDataStore(private val context: Context) {
     suspend fun setThemeColor(colorValue: Long) {
         context.dataStore.edit { preferences ->
             preferences[THEME_COLOR_KEY] = colorValue
+        }
+    }
+
+    suspend fun setAllowedApps(apps: Set<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[ALLOWED_APPS_KEY] = apps
         }
     }
 }

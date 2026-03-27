@@ -7,9 +7,13 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +25,18 @@ sealed class ConnectionState {
     object Connecting : ConnectionState()
     object Connected : ConnectionState()
 }
+
+data class AppInfo(
+    val name: String,
+    val packageName: String,
+    val icon: Drawable
+)
+
+data class WeatherData(
+    val temperature: Float = 0f,
+    val humidity: Float = 0f,
+    val toxicity: Float = 0f
+)
 
 data class PipBoyUiState(
     val scannedDevices: List<BluetoothDevice> = emptyList(),
@@ -36,7 +52,10 @@ data class PipBoyUiState(
     val alarmSoundIndex: Int = 0,
     val mediaTitle: String = "NO SIGNAL",
     val mediaArtist: String = "UNKNOWN",
-    val isMediaPlaying: Boolean = false
+    val isMediaPlaying: Boolean = false,
+    val installedApps: List<AppInfo> = emptyList(),
+    val allowedApps: Set<String> = emptySet(),
+    val weatherData: WeatherData = WeatherData()
 )
 
 class PipBoyViewModel(
@@ -82,6 +101,12 @@ class PipBoyViewModel(
                 _uiState.value = _uiState.value.copy(isBridgeEnabled = enabled)
             }
         }
+        
+        viewModelScope.launch {
+            dataStore.allowedApps.collect { apps ->
+                _uiState.value = _uiState.value.copy(allowedApps = apps)
+            }
+        }
 
         viewModelScope.launch {
             PipBoyBleManager.connectionState.collect { state ->
@@ -118,6 +143,7 @@ class PipBoyViewModel(
         viewModelScope.launch {
             PipBoyBleManager.incomingMessages.collect { message ->
                 val cleanMsg = message.trim()
+                
                 if (cleanMsg.startsWith("ALARM_STATUS|")) {
                     val parts = cleanMsg.removePrefix("ALARM_STATUS|").split("|")
                     if (parts.size >= 4) {
@@ -133,6 +159,21 @@ class PipBoyViewModel(
                             alarmSoundIndex = sound
                         )
                     }
+                } 
+                else if (cleanMsg.startsWith("DASH|WEAT:")) {
+                    val content = cleanMsg.removePrefix("DASH|WEAT:")
+                    
+                    val temp = Regex("([\\d.]+)F").find(content)?.groupValues?.get(1)?.toFloatOrNull() ?: _uiState.value.weatherData.temperature
+                    val hum = Regex("([\\d.]+)%").find(content)?.groupValues?.get(1)?.toFloatOrNull() ?: _uiState.value.weatherData.humidity
+                    val tox = Regex("([\\d.]+)kOhm").find(content)?.groupValues?.get(1)?.toFloatOrNull() ?: _uiState.value.weatherData.toxicity
+                    
+                    _uiState.value = _uiState.value.copy(
+                        weatherData = WeatherData(
+                            temperature = temp,
+                            humidity = hum,
+                            toxicity = tox
+                        )
+                    )
                 }
             }
         }
@@ -141,6 +182,38 @@ class PipBoyViewModel(
     fun toggleBridgeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             dataStore.setBridgeEnabled(enabled)
+        }
+    }
+    
+    fun loadInstalledApps() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pm = context.packageManager
+            val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            // Fetch applications asynchronously
+            val resolveInfoList = pm.queryIntentActivities(intent, 0)
+            val apps = resolveInfoList.map { resolveInfo ->
+                AppInfo(
+                    name = resolveInfo.loadLabel(pm).toString(),
+                    packageName = resolveInfo.activityInfo.packageName,
+                    icon = resolveInfo.loadIcon(pm)
+                )
+            }.distinctBy { it.packageName }.sortedBy { it.name.lowercase() }
+
+            _uiState.value = _uiState.value.copy(installedApps = apps)
+        }
+    }
+    
+    fun toggleAppAllowance(packageName: String, isAllowed: Boolean) {
+        viewModelScope.launch {
+            val currentAllowed = _uiState.value.allowedApps.toMutableSet()
+            if (isAllowed) {
+                currentAllowed.add(packageName)
+            } else {
+                currentAllowed.remove(packageName)
+            }
+            dataStore.setAllowedApps(currentAllowed)
         }
     }
 
@@ -174,7 +247,7 @@ class PipBoyViewModel(
 
     fun disconnectDevice() {
         viewModelScope.launch {
-            dataStore.saveDeviceMac(null)
+            dataStore.saveDeviceMac(null) // Clear saved device so auto-connect stops
         }
         PipBoyBleManager.disconnect()
     }
