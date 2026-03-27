@@ -1,12 +1,20 @@
 package com.danielr.pip_boycompanion
 
 import android.app.Notification
+import android.content.ComponentName
+import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.media.MediaMetadata
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -15,12 +23,29 @@ class PipBoyNotificationListener : NotificationListenerService() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isBridgeEnabled = false
 
+    private var activeMediaController: MediaController? = null
+    private var lastSentTitle = ""
+    private var lastSentArtist = ""
+    
+    // Variables for Vol Debouncing
+    private var lastVolumeAdjustmentTime = 0L
+    private val DEBOUNCE_INTERVAL_MS = 250L
+
+    private val mediaCallback = object : MediaController.Callback() {
+        override fun onMetadataChanged(metadata: MediaMetadata?) {
+            updateMediaInfo()
+        }
+
+        override fun onPlaybackStateChanged(state: PlaybackState?) {
+            updateMediaInfo()
+        }
+    }
+
     override fun onListenerConnected() {
         super.onListenerConnected()
         
-        // As a persistent service, this acts as the "Background Worker" for the app.
-        // It stays alive and gets recreated by the OS automatically.
         val dataStore = PipBoyDataStore(applicationContext)
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         
         serviceScope.launch {
             combine(dataStore.bridgeEnabled, dataStore.deviceMac) { enabled, mac ->
@@ -28,16 +53,119 @@ class PipBoyNotificationListener : NotificationListenerService() {
             }.collect { (enabled, mac) ->
                 isBridgeEnabled = enabled
                 
-                // If bridge is enabled and we have a MAC saved, instruct the BLE manager to
-                // connect using autoConnect = true. This lets the Android OS reconnect in the background!
                 if (enabled && mac != null) {
                     PipBoyBleManager.connect(applicationContext, mac)
                 } else if (mac == null) {
-                    // User explicitly hit disconnect, ensure we sever background connection
                     PipBoyBleManager.disconnect()
                 }
             }
         }
+
+        // Set up MediaSessionManager to track active media playback
+        try {
+            val mediaSessionManager = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+            val componentName = ComponentName(this, PipBoyNotificationListener::class.java)
+            
+            val sessions = mediaSessionManager.getActiveSessions(componentName)
+            updateActiveMediaController(sessions)
+            
+            mediaSessionManager.addOnActiveSessionsChangedListener({ controllers ->
+                updateActiveMediaController(controllers)
+            }, componentName)
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+        }
+
+        // Listen for inbound commands from the Pip-Boy
+        serviceScope.launch {
+            PipBoyBleManager.incomingMessages.collect { msg ->
+                val command = msg.trim()
+                if (command.startsWith("SPOT|")) {
+                    when (command) {
+                        "SPOT|PAUSE" -> {
+                            val state = activeMediaController?.playbackState?.state
+                            if (state == PlaybackState.STATE_PLAYING) {
+                                activeMediaController?.transportControls?.pause()
+                            } else {
+                                activeMediaController?.transportControls?.play()
+                            }
+                        }
+                        "SPOT|NEXT" -> activeMediaController?.transportControls?.skipToNext()
+                        "SPOT|PREV" -> activeMediaController?.transportControls?.skipToPrevious()
+                        
+                        "SPOT|UP" -> adjustVolume(audioManager, AudioManager.ADJUST_RAISE)
+                        "SPOT|DOWN" -> adjustVolume(audioManager, AudioManager.ADJUST_LOWER)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Helper function to safely adjust volume with debouncing.
+     * Prevents the physical Pip-Boy buttons from spamming the Android UI thread
+     * and creating volume lag.
+     */
+    private fun adjustVolume(audioManager: AudioManager, direction: Int) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastVolumeAdjustmentTime > DEBOUNCE_INTERVAL_MS) {
+            lastVolumeAdjustmentTime = currentTime
+            
+            serviceScope.launch(Dispatchers.IO) {
+                // If a media controller is actively engaged in "Remote Playback" (like casting to a Nest Hub or Chromecast)
+                // we should route the volume command through the MediaController's specific volume provider.
+                val isRemotePlayback = activeMediaController?.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
+                
+                if (isRemotePlayback) {
+                    activeMediaController?.adjustVolume(direction, AudioManager.FLAG_SHOW_UI)
+                } else {
+                    // Fallback to standard local hardware volume
+                    audioManager.adjustStreamVolume(
+                        AudioManager.STREAM_MUSIC,
+                        direction,
+                        AudioManager.FLAG_SHOW_UI
+                    )
+                }
+            }
+        }
+    }
+
+    private fun updateActiveMediaController(controllers: List<MediaController>?) {
+        activeMediaController?.unregisterCallback(mediaCallback)
+        activeMediaController = controllers?.firstOrNull()
+        activeMediaController?.registerCallback(mediaCallback)
+        updateMediaInfo()
+    }
+
+    private fun updateMediaInfo() {
+        val metadata = activeMediaController?.metadata
+        val state = activeMediaController?.playbackState
+        
+        var title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "NO SIGNAL"
+        var artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "UNKNOWN"
+        val isPlaying = state?.state == PlaybackState.STATE_PLAYING
+        
+        // Sanitize strings to avoid breaking the Pip-Boy serial parser
+        title = title.replace("|", "").replace("\n", " ").take(25)
+        artist = artist.replace("|", "").replace("\n", " ").take(25)
+        
+        if (title.isBlank()) title = "UNKNOWN"
+        if (artist.isBlank()) artist = "UNKNOWN"
+        
+        // Only trigger BLE outbound message if the actual song changed
+        if (title != lastSentTitle || artist != lastSentArtist) {
+            PipBoyBleManager.sendData("SPOT|INFO:$title|$artist\n")
+            lastSentTitle = title
+            lastSentArtist = artist
+        }
+        
+        // Update local state flows so the phone's Compose UI updates too
+        PipBoyBleManager.updateMediaState(title, artist, isPlaying)
+    }
+
+    override fun onDestroy() {
+        activeMediaController?.unregisterCallback(mediaCallback)
+        super.onDestroy()
     }
 
     private fun getAppName(packageName: String): String {
@@ -66,7 +194,6 @@ class PipBoyNotificationListener : NotificationListenerService() {
             
             if (!bodyText.isNullOrBlank()) {
                 val formattedString = "NOTIF|$appName: $bodyText\n"
-                // The BleManager singleton stays alive and handles the write safely
                 PipBoyBleManager.sendData(formattedString)
             }
         }

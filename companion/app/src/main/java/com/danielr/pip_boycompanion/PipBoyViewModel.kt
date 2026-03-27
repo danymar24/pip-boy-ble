@@ -33,7 +33,10 @@ data class PipBoyUiState(
     val isAlarmEnabled: Boolean = false,
     val alarmTime: String = "07:00",
     val alarmRepeatDaily: Boolean = false,
-    val alarmSoundIndex: Int = 0
+    val alarmSoundIndex: Int = 0,
+    val mediaTitle: String = "NO SIGNAL",
+    val mediaArtist: String = "UNKNOWN",
+    val isMediaPlaying: Boolean = false
 )
 
 class PipBoyViewModel(
@@ -92,12 +95,30 @@ class PipBoyViewModel(
             }
         }
 
+        // Listen to Media States
+        viewModelScope.launch {
+            PipBoyBleManager.mediaTitle.collect { title ->
+                _uiState.value = _uiState.value.copy(mediaTitle = title)
+            }
+        }
+
+        viewModelScope.launch {
+            PipBoyBleManager.mediaArtist.collect { artist ->
+                _uiState.value = _uiState.value.copy(mediaArtist = artist)
+            }
+        }
+
+        viewModelScope.launch {
+            PipBoyBleManager.isMediaPlaying.collect { isPlaying ->
+                _uiState.value = _uiState.value.copy(isMediaPlaying = isPlaying)
+            }
+        }
+
         // Process incoming messages from Pip-Boy
         viewModelScope.launch {
             PipBoyBleManager.incomingMessages.collect { message ->
                 val cleanMsg = message.trim()
                 if (cleanMsg.startsWith("ALARM_STATUS|")) {
-                    // Example Format: ALARM_STATUS|ON|07:30|1|0
                     val parts = cleanMsg.removePrefix("ALARM_STATUS|").split("|")
                     if (parts.size >= 4) {
                         val enabled = parts[0] == "ON"
@@ -153,7 +174,7 @@ class PipBoyViewModel(
 
     fun disconnectDevice() {
         viewModelScope.launch {
-            dataStore.saveDeviceMac(null) // Clear saved device so auto-connect stops
+            dataStore.saveDeviceMac(null)
         }
         PipBoyBleManager.disconnect()
     }

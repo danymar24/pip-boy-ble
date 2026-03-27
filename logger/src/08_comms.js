@@ -154,6 +154,7 @@ Pip.processBuffer = function () {
       }
       else if (parts[0] === "DASH") {
         var dashMsg = parts[1], dIdx = dashMsg.indexOf(":");
+        Serial3.write(`${cmd}\n`);
         if (dIdx > -1) {
           var key = dashMsg.substring(0, dIdx).trim().toUpperCase();
           var val = dashMsg.substring(dIdx + 1).trim();

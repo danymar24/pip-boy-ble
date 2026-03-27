@@ -28,6 +28,22 @@ object PipBoyBleManager {
     private val _incomingMessages = MutableSharedFlow<String>(extraBufferCapacity = 10)
     val incomingMessages = _incomingMessages.asSharedFlow()
 
+    // --- Media State Flows ---
+    private val _mediaTitle = MutableStateFlow("NO SIGNAL")
+    val mediaTitle: StateFlow<String> = _mediaTitle.asStateFlow()
+
+    private val _mediaArtist = MutableStateFlow("UNKNOWN")
+    val mediaArtist: StateFlow<String> = _mediaArtist.asStateFlow()
+
+    private val _isMediaPlaying = MutableStateFlow(false)
+    val isMediaPlaying: StateFlow<Boolean> = _isMediaPlaying.asStateFlow()
+
+    fun updateMediaState(title: String, artist: String, isPlaying: Boolean) {
+        _mediaTitle.value = title
+        _mediaArtist.value = artist
+        _isMediaPlaying.value = isPlaying
+    }
+
     private var bluetoothGatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var notifyCharacteristic: BluetoothGattCharacteristic? = null
@@ -72,22 +88,18 @@ object PipBoyBleManager {
                 var foundRx: BluetoothGattCharacteristic? = null
                 var foundTx: BluetoothGattCharacteristic? = null
                 
-                // Search globally across all services for RX and TX
                 for (srv in gatt.services) {
                     for (char in srv.characteristics) {
                         val uuidStr = char.uuid.toString().uppercase()
                         val props = char.properties
                         
-                        // RX Matching (Writable)
                         if (uuidStr.contains("6E400002")) {
                             foundRx = char
                         } else if (foundRx == null && ((props and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 || 
                                 (props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0)) {
-                            // Some firmwares flip RX/TX
                             if (uuidStr.contains("6E400003")) foundRx = char
                         }
 
-                        // TX Matching (Notifiable)
                         if (uuidStr.contains("6E400003") && (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0) {
                             foundTx = char
                         } else if (foundTx == null && (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0) {
@@ -114,6 +126,7 @@ object PipBoyBleManager {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
                         } else {
+                            @Suppress("DEPRECATION")
                             descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                             gatt.writeDescriptor(descriptor)
                         }
@@ -137,8 +150,7 @@ object PipBoyBleManager {
             }
         }
 
-        // Handle incoming notifications (Android < 13)
-        @Deprecated("Deprecated in Java")
+        @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
@@ -152,7 +164,6 @@ object PipBoyBleManager {
             }
         }
 
-        // Handle incoming notifications (Android 13+)
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,

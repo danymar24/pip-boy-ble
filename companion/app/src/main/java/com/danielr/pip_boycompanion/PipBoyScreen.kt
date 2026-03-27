@@ -6,6 +6,12 @@ import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -65,6 +72,9 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
                 composable("alarm_module") {
                     PipBoyAlarmScreen(viewModel = viewModel)
                 }
+                composable("radio_module") {
+                    PipBoyRadioScreen(viewModel = viewModel)
+                }
                 composable("pipboy_settings") {
                     PipBoySettingsScreen(viewModel = viewModel, themeViewModel = themeViewModel)
                 }
@@ -79,8 +89,9 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
 @Composable
 fun PipBoyBottomNav(navController: NavHostController) {
     val items = listOf(
-        "uplink_status" to "UPLINK STATUS",
-        "alarm_module" to "ALARM MODULE",
+        "uplink_status" to "UPLINK",
+        "alarm_module" to "ALARM",
+        "radio_module" to "RADIO",
         "pipboy_settings" to "SETTINGS"
     )
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -110,7 +121,7 @@ fun PipBoyBottomNav(navController: NavHostController) {
                     Text(
                         text = label,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp, // Adjusted slightly to fit 3 tabs
+                        fontSize = 9.sp, // Adjusted to fit 4 tabs nicely
                         color = if (currentRoute == route) primaryColor else dimColor,
                         maxLines = 1
                     )
@@ -120,6 +131,112 @@ fun PipBoyBottomNav(navController: NavHostController) {
                     selectedTextColor = primaryColor,
                     unselectedTextColor = dimColor
                 )
+            )
+        }
+    }
+}
+
+@Composable
+fun PipBoyRadioScreen(viewModel: PipBoyViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val dimColor = primaryColor.copy(alpha = 0.5f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "V.A.T.S. MEDIA CONTROL",
+            color = primaryColor,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 18.sp
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Now Playing Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, primaryColor)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "NOW PLAYING",
+                color = dimColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = uiState.mediaTitle.uppercase(Locale.getDefault()),
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 24.sp,
+                maxLines = 2,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = uiState.mediaArtist.uppercase(Locale.getDefault()),
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 16.sp,
+                maxLines = 1,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Visualizer
+        VatsVisualizer(isPlaying = uiState.isMediaPlaying, primaryColor = primaryColor)
+    }
+}
+
+@Composable
+fun VatsVisualizer(isPlaying: Boolean, primaryColor: Color) {
+    val infiniteTransition = rememberInfiniteTransition(label = "vats")
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp)
+            .border(2.dp, primaryColor)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        // Create 12 equalizer bars
+        for (i in 0 until 12) {
+            val heightMultiplier by infiniteTransition.animateFloat(
+                initialValue = 0.1f,
+                targetValue = if (isPlaying) 1.0f else 0.1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(
+                        durationMillis = 300 + (i * 50 % 300), // Stagger the speeds
+                        easing = FastOutSlowInEasing,
+                        delayMillis = i * 40 // Offset the starts
+                    ),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "bar_$i"
+            )
+            
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
+                    .fillMaxHeight(heightMultiplier)
+                    .background(primaryColor)
             )
         }
     }
@@ -176,7 +293,6 @@ fun PipBoyAlarmScreen(viewModel: PipBoyViewModel) {
                     .border(2.dp, primaryColor)
                     .background(alphaColor)
                     .clickable {
-                        // Safely parse existing time for the dialog
                         val parts = uiState.alarmTime.split(":")
                         val currentHour = parts.getOrNull(0)?.toIntOrNull() ?: 7
                         val currentMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0
@@ -199,7 +315,7 @@ fun PipBoyAlarmScreen(viewModel: PipBoyViewModel) {
                     text = uiState.alarmTime,
                     color = primaryColor,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 48.sp // Extra large retro clock font
+                    fontSize = 48.sp 
                 )
             }
         }
@@ -297,7 +413,6 @@ fun PipBoyAlarmScreen(viewModel: PipBoyViewModel) {
                 
                 Button(
                     onClick = { 
-                        // Simple retro cycle-through behavior
                         val nextIndex = (uiState.alarmSoundIndex + 1) % sounds.size
                         viewModel.setAlarmSound(nextIndex)
                     },
@@ -497,6 +612,7 @@ fun ColorButton(
         Text(text = name, color = color, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
     }
 }
+
 
 @Composable
 fun UplinkStatusScreen(viewModel: PipBoyViewModel) {

@@ -43,23 +43,62 @@ Pip.startSpotifyApp = function () {
 
     // Hardware Polling
     if (Pip.spotifyDaemon) clearInterval(Pip.spotifyDaemon);
-    pinMode(A1, "input_pullup"); pinMode(E1, "input_pullup"); pinMode(E2, "input_pullup");
 
+    // Explicitly lock all three pins into an input state
+    pinMode(A1, "input_pullup");
+    pinMode(E1, "input_pullup");
+    pinMode(E2, "input_pullup");
+
+    // --- THE FIX: PRIME THE BASELINE STATE ---
+    // Read the physical resting state of the pins right now.
+    // This prevents the loop from thinking a resting '0' is a new button press.
+    Pip.btnPressed = (digitalRead(A1) === 0);
+    Pip.e1Pressed = (digitalRead(E1) === 0);
+    Pip.e2Pressed = (digitalRead(E2) === 0);
+
+    // Running at 20ms to catch fast rotary dial spins
     Pip.spotifyDaemon = setInterval(function () {
         try {
             Pip.radioKPSS = false;
-            var a1State = digitalRead(A1), e1State = digitalRead(E1), e2State = digitalRead(E2);
 
-            if (a1State === 0 && !Pip.btnPressed) { Pip.btnPressed = true; Serial3.print("SPOT|PAUSE\n"); }
-            else if (a1State === 1 && Pip.btnPressed) { Pip.btnPressed = false; }
+            var a1State = digitalRead(A1);
+            var e1State = digitalRead(E1);
+            var e2State = digitalRead(E2);
 
-            if (e1State === 0 && !Pip.e1Pressed) { Pip.e1Pressed = true; Serial3.print("SPOT|NEXT\n"); }
-            else if (e1State === 1 && Pip.e1Pressed) { Pip.e1Pressed = false; }
+            // --- BUTTON LOGIC (A1: Play/Pause) ---
+            if (a1State === 0 && !Pip.btnPressed) {
+                Pip.btnPressed = true;
+                Serial3.print("SPOT|PAUSE\n");
+            } else if (a1State === 1 && Pip.btnPressed) {
+                Pip.btnPressed = false;
+            }
 
-            if (e2State === 0 && !Pip.e2Pressed) { Pip.e2Pressed = true; Serial3.print("SPOT|PREV\n"); }
-            else if (e2State === 1 && Pip.e2Pressed) { Pip.e2Pressed = false; }
+            // --- TUNE UP LOGIC (E1: Next Track) ---
+            if (e1State === 0 && !Pip.e1Pressed) {
+                Pip.e1Pressed = true;
+                Serial3.print("SPOT|NEXT\n");
+            } else if (e1State === 1 && Pip.e1Pressed) {
+                Pip.e1Pressed = false;
+            }
+
+            // --- TUNE DOWN LOGIC (E2: Prev Track) ---
+            if (e2State === 0 && !Pip.e2Pressed) {
+                Pip.e2Pressed = true;
+                Serial3.print("SPOT|PREV\n");
+            } else if (e2State === 1 && Pip.e2Pressed) {
+                Pip.e2Pressed = false;
+            }
+
         } catch (e) { }
     }, 20);
+
+    // Remove any existing listeners so ours is the only one
+    Pip.removeAllListeners("knob1");
+
+    // When left knob is rotated or clicked, log the event
+    Pip.on("knob1", (d) =>
+        d !== 0 ? Serial3.write("SPOT|" + (d > 0 ? "UP" : "DOWN") + "\n") : Serial3.write("SPOT|CLICK\n")
+    );
 
     // Teardown
     var prevRemove = Pip.removeSubmenu;
@@ -69,6 +108,7 @@ Pip.startSpotifyApp = function () {
         if (origRadioPlayClip) radioPlayClip = origRadioPlayClip;
         if (typeof rd !== 'undefined' && Pip.origRdEnable) rd.enable = Pip.origRdEnable;
         Pip.radioKPSS = Pip.origRadioKPSS;
+        Pip.removeAllListeners("knob1");
         if (prevRemove) prevRemove();
     };
 
