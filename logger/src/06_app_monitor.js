@@ -3,7 +3,7 @@
 // ==========================================
 Pip.serialLogs = ["UPLINK MONITOR INITIALIZED", "Awaiting Serial data..."];
 Pip.isMonitorActive = false;
-Pip.maxLogs = 11;
+Pip.maxLogs = 10;
 
 Pip.logMonitor = function (msg) {
     var cleanMsg = msg.replace(/\r/g, "").replace(/\n/g, "");
