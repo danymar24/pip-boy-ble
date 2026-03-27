@@ -27,9 +27,13 @@ class PipBoyNotificationListener : NotificationListenerService() {
     private var lastSentTitle = ""
     private var lastSentArtist = ""
     
+    // Variables for Media Command Debouncing
+    private var lastMediaCommandTime = 0L
+    private val MEDIA_DEBOUNCE_INTERVAL_MS = 500L
+    
     // Variables for Vol Debouncing
     private var lastVolumeAdjustmentTime = 0L
-    private val DEBOUNCE_INTERVAL_MS = 250L
+    private val VOL_DEBOUNCE_INTERVAL_MS = 200L
 
     private val mediaCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) {
@@ -81,20 +85,32 @@ class PipBoyNotificationListener : NotificationListenerService() {
             PipBoyBleManager.incomingMessages.collect { msg ->
                 val command = msg.trim()
                 if (command.startsWith("SPOT|")) {
-                    when (command) {
-                        "SPOT|PAUSE" -> {
-                            val state = activeMediaController?.playbackState?.state
-                            if (state == PlaybackState.STATE_PLAYING) {
-                                activeMediaController?.transportControls?.pause()
-                            } else {
-                                activeMediaController?.transportControls?.play()
-                            }
+                    val currentTime = System.currentTimeMillis()
+                    
+                    // Handle Volume Commands (Faster debounce)
+                    if (command == "SPOT|UP" || command == "SPOT|DOWN") {
+                        if (currentTime - lastVolumeAdjustmentTime > VOL_DEBOUNCE_INTERVAL_MS) {
+                            lastVolumeAdjustmentTime = currentTime
+                            if (command == "SPOT|UP") adjustVolume(audioManager, AudioManager.ADJUST_RAISE)
+                            if (command == "SPOT|DOWN") adjustVolume(audioManager, AudioManager.ADJUST_LOWER)
                         }
-                        "SPOT|NEXT" -> activeMediaController?.transportControls?.skipToNext()
-                        "SPOT|PREV" -> activeMediaController?.transportControls?.skipToPrevious()
+                    } 
+                    // Handle Media Control Commands (Slower debounce to prevent double-skips)
+                    else if (currentTime - lastMediaCommandTime > MEDIA_DEBOUNCE_INTERVAL_MS) {
+                        lastMediaCommandTime = currentTime
                         
-                        "SPOT|UP" -> adjustVolume(audioManager, AudioManager.ADJUST_RAISE)
-                        "SPOT|DOWN" -> adjustVolume(audioManager, AudioManager.ADJUST_LOWER)
+                        when (command) {
+                            "SPOT|PAUSE" -> {
+                                val state = activeMediaController?.playbackState?.state
+                                if (state == PlaybackState.STATE_PLAYING) {
+                                    activeMediaController?.transportControls?.pause()
+                                } else {
+                                    activeMediaController?.transportControls?.play()
+                                }
+                            }
+                            "SPOT|NEXT" -> activeMediaController?.transportControls?.skipToNext()
+                            "SPOT|PREV" -> activeMediaController?.transportControls?.skipToPrevious()
+                        }
                     }
                 }
             }
@@ -102,30 +118,21 @@ class PipBoyNotificationListener : NotificationListenerService() {
     }
 
     /**
-     * Helper function to safely adjust volume with debouncing.
-     * Prevents the physical Pip-Boy buttons from spamming the Android UI thread
-     * and creating volume lag.
+     * Helper function to safely adjust volume.
+     * Offloads the actual adjustment to the IO dispatcher so the BLE thread isn't blocked.
      */
     private fun adjustVolume(audioManager: AudioManager, direction: Int) {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastVolumeAdjustmentTime > DEBOUNCE_INTERVAL_MS) {
-            lastVolumeAdjustmentTime = currentTime
+        serviceScope.launch(Dispatchers.IO) {
+            val isRemotePlayback = activeMediaController?.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
             
-            serviceScope.launch(Dispatchers.IO) {
-                // If a media controller is actively engaged in "Remote Playback" (like casting to a Nest Hub or Chromecast)
-                // we should route the volume command through the MediaController's specific volume provider.
-                val isRemotePlayback = activeMediaController?.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
-                
-                if (isRemotePlayback) {
-                    activeMediaController?.adjustVolume(direction, AudioManager.FLAG_SHOW_UI)
-                } else {
-                    // Fallback to standard local hardware volume
-                    audioManager.adjustStreamVolume(
-                        AudioManager.STREAM_MUSIC,
-                        direction,
-                        AudioManager.FLAG_SHOW_UI
-                    )
-                }
+            if (isRemotePlayback) {
+                activeMediaController?.adjustVolume(direction, AudioManager.FLAG_SHOW_UI)
+            } else {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    direction,
+                    AudioManager.FLAG_SHOW_UI
+                )
             }
         }
     }
