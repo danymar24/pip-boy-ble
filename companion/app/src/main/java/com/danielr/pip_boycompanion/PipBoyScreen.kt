@@ -5,6 +5,7 @@ import android.app.TimePickerDialog
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
+import android.graphics.PorterDuff
 import android.provider.Settings
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -84,11 +86,18 @@ fun PipBoyScreen(viewModel: PipBoyViewModel, themeViewModel: ThemeViewModel) {
                     PipBoySettingsScreen(
                         viewModel = viewModel, 
                         themeViewModel = themeViewModel,
-                        onNavigateToFilter = { navController.navigate("app_filter") }
+                        onNavigateToFilter = { navController.navigate("app_filter") },
+                        onNavigateToCameraFilter = { navController.navigate("camera_filter") }
                     )
                 }
                 composable("app_filter") {
                     PipBoyAppFilterScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("camera_filter") {
+                    PipBoyCameraFilterScreen(
                         viewModel = viewModel,
                         onBack = { navController.popBackStack() }
                     )
@@ -361,6 +370,148 @@ fun PipBoyAppFilterScreen(viewModel: PipBoyViewModel, onBack: () -> Unit) {
                     Switch(
                         checked = isAllowed,
                         onCheckedChange = { viewModel.toggleAppAllowance(app.packageName, it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = PipBoyBackground,
+                            checkedTrackColor = primaryColor,
+                            uncheckedThumbColor = primaryColor.copy(alpha = 0.5f),
+                            uncheckedTrackColor = PipBoyBackground,
+                            uncheckedBorderColor = primaryColor
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PipBoyCameraFilterScreen(viewModel: PipBoyViewModel, onBack: () -> Unit) {
+    val uiState by viewModel.uiState.collectAsState()
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val alphaColor = primaryColor.copy(alpha = 0.2f)
+    val dimColor = primaryColor.copy(alpha = 0.5f)
+
+    LaunchedEffect(Unit) {
+        if (uiState.installedApps.isEmpty()) {
+            viewModel.loadInstalledApps()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "< BACK",
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable { onBack() }
+                    .padding(end = 16.dp, top = 8.dp, bottom = 8.dp)
+            )
+            Text(
+                text = "OPTICAL INTERFACE CONFIG",
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 16.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = { viewModel.toggleCameraFilter() },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (uiState.isCameraFilterActive) primaryColor.copy(alpha = 0.3f) else alphaColor
+            ),
+            shape = androidx.compose.ui.graphics.RectangleShape,
+            modifier = Modifier.fillMaxWidth().border(1.dp, primaryColor)
+        ) {
+            Text(
+                text = if (uiState.isCameraFilterActive) "SHOW ALL APPS" else "SCAN FOR CAMERAS",
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "SELECT AUTHORIZED CAMERA SOURCES:",
+            color = dimColor,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val filteredApps = if (uiState.isCameraFilterActive) {
+            uiState.installedApps.filter { 
+                it.name.contains("camera", ignoreCase = true) || 
+                it.packageName.contains("camera", ignoreCase = true) ||
+                it.packageName.contains("cam", ignoreCase = true)
+            }
+        } else {
+            uiState.installedApps
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .border(2.dp, primaryColor)
+                .padding(8.dp)
+        ) {
+            items(filteredApps) { app ->
+                val isAllowed = uiState.authorizedCameraApps.contains(app.packageName)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .border(1.dp, alphaColor)
+                        .clickable { viewModel.toggleCameraAllowance(app.packageName, !isAllowed) }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        AndroidView(
+                            factory = { ctx ->
+                                ImageView(ctx).apply {
+                                    setImageDrawable(app.icon)
+                                    // Apply RobCo phosphor green color filter to the app icons for aesthetic consistency
+                                    setColorFilter(primaryColor.toArgb(), PorterDuff.Mode.SRC_IN)
+                                }
+                            },
+                            update = { imageView ->
+                                imageView.setColorFilter(primaryColor.toArgb(), PorterDuff.Mode.SRC_IN)
+                            },
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = app.name.uppercase(Locale.getDefault()),
+                                color = primaryColor,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 14.sp,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = app.packageName,
+                                color = primaryColor.copy(alpha = 0.5f),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 8.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = isAllowed,
+                        onCheckedChange = { viewModel.toggleCameraAllowance(app.packageName, it) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = PipBoyBackground,
                             checkedTrackColor = primaryColor,
@@ -701,7 +852,8 @@ fun PipBoyAlarmScreen(viewModel: PipBoyViewModel) {
 fun PipBoySettingsScreen(
     viewModel: PipBoyViewModel, 
     themeViewModel: ThemeViewModel,
-    onNavigateToFilter: () -> Unit
+    onNavigateToFilter: () -> Unit,
+    onNavigateToCameraFilter: () -> Unit
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val alphaColor = primaryColor.copy(alpha = 0.2f)
@@ -865,6 +1017,44 @@ fun PipBoySettingsScreen(
             ) {
                 Text(
                     text = "CONFIGURE PERMISSIONS",
+                    color = primaryColor,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Optical Interface Config (Camera Filter)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, primaryColor)
+                .padding(8.dp)
+        ) {
+            Text(
+                text = "OPTICAL INTERFACE CONFIG",
+                color = primaryColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            )
+            Text(
+                text = "CAMERA AUTHORIZATION SYSTEM",
+                color = dimColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onNavigateToCameraFilter,
+                colors = ButtonDefaults.buttonColors(containerColor = alphaColor),
+                shape = androidx.compose.ui.graphics.RectangleShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, primaryColor)
+            ) {
+                Text(
+                    text = "CONFIGURE CAMERAS",
                     color = primaryColor,
                     fontFamily = FontFamily.Monospace
                 )

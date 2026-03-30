@@ -55,7 +55,10 @@ data class PipBoyUiState(
     val isMediaPlaying: Boolean = false,
     val installedApps: List<AppInfo> = emptyList(),
     val allowedApps: Set<String> = emptySet(),
-    val weatherData: WeatherData = WeatherData()
+    val weatherData: WeatherData = WeatherData(),
+    
+    val authorizedCameraApps: Set<String> = emptySet(),
+    val isCameraFilterActive: Boolean = false
 )
 
 class PipBoyViewModel(
@@ -105,6 +108,12 @@ class PipBoyViewModel(
         viewModelScope.launch {
             dataStore.allowedApps.collect { apps ->
                 _uiState.value = _uiState.value.copy(allowedApps = apps)
+            }
+        }
+        
+        viewModelScope.launch {
+            dataStore.authorizedCameraApps.collect { apps ->
+                _uiState.value = _uiState.value.copy(authorizedCameraApps = apps)
             }
         }
 
@@ -215,6 +224,22 @@ class PipBoyViewModel(
             }
             dataStore.setAllowedApps(currentAllowed)
         }
+    }
+
+    fun toggleCameraAllowance(packageName: String, isAllowed: Boolean) {
+        viewModelScope.launch {
+            val currentAllowed = _uiState.value.authorizedCameraApps.toMutableSet()
+            if (isAllowed) {
+                currentAllowed.add(packageName)
+            } else {
+                currentAllowed.remove(packageName)
+            }
+            dataStore.setAuthorizedCameraApps(currentAllowed)
+        }
+    }
+    
+    fun toggleCameraFilter() {
+        _uiState.value = _uiState.value.copy(isCameraFilterActive = !_uiState.value.isCameraFilterActive)
     }
 
     @SuppressLint("MissingPermission")

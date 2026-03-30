@@ -20,6 +20,7 @@ class PipBoyDataStore(private val context: Context) {
         val BRIDGE_ENABLED_KEY = booleanPreferencesKey("bridge_enabled")
         val THEME_COLOR_KEY = longPreferencesKey("theme_color")
         val ALLOWED_APPS_KEY = stringSetPreferencesKey("allowed_apps")
+        val AUTHORIZED_CAMERA_APPS_KEY = stringSetPreferencesKey("authorized_camera_apps")
     }
 
     val deviceMac: Flow<String?> = context.dataStore.data
@@ -40,6 +41,11 @@ class PipBoyDataStore(private val context: Context) {
     val allowedApps: Flow<Set<String>> = context.dataStore.data
         .map { preferences ->
             preferences[ALLOWED_APPS_KEY] ?: emptySet()
+        }
+
+    val authorizedCameraApps: Flow<Set<String>> = context.dataStore.data
+        .map { preferences ->
+            preferences[AUTHORIZED_CAMERA_APPS_KEY] ?: emptySet()
         }
 
     suspend fun saveDeviceMac(mac: String?) {
@@ -67,6 +73,12 @@ class PipBoyDataStore(private val context: Context) {
     suspend fun setAllowedApps(apps: Set<String>) {
         context.dataStore.edit { preferences ->
             preferences[ALLOWED_APPS_KEY] = apps
+        }
+    }
+
+    suspend fun setAuthorizedCameraApps(apps: Set<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTHORIZED_CAMERA_APPS_KEY] = apps
         }
     }
 }
