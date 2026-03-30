@@ -43,6 +43,8 @@ Pip.startCameraApp = function () {
 
     // --- 1. THE KNOB LOGIC (Set Timer) ---
     Pip.camKnobHandler = function (dir) {
+        if (!Pip.isCamActive) return;
+
         if (Pip.isCountingDown) return; // Lock the dial while the countdown is running
 
         if (dir > 0) Pip.camTimer++;
@@ -53,6 +55,8 @@ Pip.startCameraApp = function () {
 
     // --- 2. THE BUTTON LOGIC (Trigger Shutter) ---
     Pip.camBtnHandler = function () {
+
+        if (!Pip.isCamActive) return;
         // If we are already counting down, pressing the button again cancels it
         if (Pip.isCountingDown) {
             clearInterval(Pip.camInterval);
@@ -101,18 +105,25 @@ Pip.startCameraApp = function () {
     };
 
 
-    // When left knob is rotated or clicked, log the event
-    Pip.on("knob1", (d) =>
-        d !== 0 ? Pip.camKnobHandler(d) : Pip.camBtnHandler(d)
-    );
+    Pip.camUnifiedHandler = function (d) {
+        if (d !== 0) {
+            Pip.camKnobHandler(d);
+        } else {
+            Pip.camBtnHandler();
+        }
+    };
+
+    // Bind the named function to the Wand OS event
+    Pip.on("knob1", Pip.camUnifiedHandler);
 
     // --- 3. TEARDOWN ---
     var prevRemove = Pip.removeSubmenu;
     Pip.removeSubmenu = function () {
         Pip.isCamActive = false;
         if (Pip.camInterval) clearInterval(Pip.camInterval);
-        Pip.removeListener("knob1", Pip.camKnobHandler);
-        Pip.removeListener("knob1btn", Pip.camBtnHandler);
+
+        Pip.removeListener("knob1", Pip.camUnifiedHandler);
+
         if (prevRemove) prevRemove();
     };
 
