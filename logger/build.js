@@ -3,7 +3,9 @@ const path = require('path');
 const { minify } = require('terser');
 const { SerialPort } = require('serialport');
 
+// --- PATH CONFIGURATION ---
 const srcDir = path.join(__dirname, 'src');
+const appsDir = path.join(srcDir, 'apps');
 const outDir = path.join(__dirname, 'USER_BOOT');
 const outputFile = path.join(outDir, 'daemon.min.js');
 
@@ -11,17 +13,43 @@ if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir);
 }
 
-const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.js'));
-files.sort();
-
 console.log("RobCo OS Build Pipeline Initialized...");
 
 async function build() {
+    const fileList = [];
+
+    // 1. Collect Core Files from /src/ (00, 01, 02, 98, 99)
+    const coreFiles = fs.readdirSync(srcDir, { withFileTypes: true })
+        .filter(item => !item.isDirectory() && item.name.endsWith('.js'))
+        .map(item => ({
+            name: item.name,
+            fullPath: path.join(srcDir, item.name)
+        }));
+
+    // 2. Collect App Files from /src/apps/ (03, 04, 05, etc.)
+    let appFiles = [];
+    if (fs.existsSync(appsDir)) {
+        appFiles = fs.readdirSync(appsDir)
+            .filter(f => f.endsWith('.js'))
+            .map(f => ({
+                name: f,
+                fullPath: path.join(appsDir, f)
+            }));
+    }
+
+    // 3. Combine and Sort by the XX_ prefix
+    const allFiles = [...coreFiles, ...appFiles].sort((a, b) => {
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    console.log(`-> Detected ${allFiles.length} files for the build sequence.`);
+
     let combinedCode = "";
 
-    files.forEach(file => {
-        console.log(`-> Merging: ${file}`);
-        combinedCode += fs.readFileSync(path.join(srcDir, file), 'utf8') + "\n";
+    // 4. Merge content
+    allFiles.forEach(file => {
+        console.log(`-> Merging: ${file.name}`);
+        combinedCode += fs.readFileSync(file.fullPath, 'utf8') + "\n";
     });
 
     console.log("-> Running Terser Minification...");
@@ -30,18 +58,18 @@ async function build() {
         const minified = await minify(combinedCode, {
             compress: {
                 dead_code: true,
-                drop_console: false, // Keep consoles if you are debugging over USB
+                drop_console: false, // Keep consoles for ESP32-S3 USB debugging
                 passes: 2
             },
             mangle: {
-                // CRITICAL: Do not let Terser rename the native Wand OS hooks!
+                // Protecting native Wand OS hooks
                 reserved: [
                     'Pip', 'bC', 'g', 'E', 'MODE', 'Serial3', 'USB',
                     'checkMode', 'drawFooter', 'drawHeader', 'setTime'
                 ]
             },
             format: {
-                comments: false // Strip all comments to save bytes
+                comments: false 
             }
         });
 
@@ -54,8 +82,8 @@ async function build() {
         console.log(`\nBuild Complete!`);
         console.log(`Original Size : ${originalSize} bytes`);
         console.log(`Minified Size : ${newSize} bytes (-${savings}%)`);
-        console.log(`Output saved to: ${outputFile}`);
-
+        
+        // Upload to the Pip-Boy hardware
         await uploadToPipboy(minified.code, 'COM8');
 
     } catch (err) {
@@ -63,64 +91,39 @@ async function build() {
     }
 }
 
+// ... (uploadToPipboy remains unchanged)
 async function uploadToPipboy(code, portPath) {
     console.log(`\n-> Initiating Upload to Pipboy on ${portPath}...`);
-
-    // Define the exact path on the Pipboy's SD card
     const targetPath = 'USER_BOOT/daemon.min.js';
 
     return new Promise((resolve, reject) => {
         const port = new SerialPort({ path: portPath, baudRate: 115200 });
-
         port.on('open', async () => {
-            console.log("-> Serial port opened. Preparing Pipboy file system...");
-
             const sendCmd = (str, delayMs = 50) => {
                 return new Promise(res => {
                     port.write(str, () => {
-                        port.drain(() => {
-                            setTimeout(res, delayMs);
-                        });
+                        port.drain(() => { setTimeout(res, delayMs); });
                     });
                 });
             };
 
             try {
                 await sendCmd('\x10', 100);
-
-                // Ensure the USER_BOOT directory exists before trying to write to it
-                // We wrap it in a try/catch so it doesn't crash if the folder is already there
-                console.log("-> Checking directories...");
                 await sendCmd(`try{require('fs').mkdirSync('USER_BOOT');}catch(e){}\n`, 100);
-
-                // Use the targetPath variable
-                console.log(`-> Initializing ${targetPath}...`);
                 await sendCmd(`require('fs').writeFileSync('${targetPath}', '');\n`, 200);
 
                 const chunkSize = 256;
-                console.log(`-> Writing data in chunks of ${chunkSize} bytes...`);
-
                 for (let i = 0; i < code.length; i += chunkSize) {
                     const chunk = code.substring(i, i + chunkSize);
                     const safeChunk = JSON.stringify(chunk);
-
-                    // Use the targetPath variable here too
-                    const cmd = `require('fs').appendFileSync('${targetPath}', ${safeChunk});\n`;
-                    await sendCmd(cmd, 30);
-
+                    await sendCmd(`require('fs').appendFileSync('${targetPath}', ${safeChunk});\n`, 30);
                     process.stdout.write('.');
                 }
 
                 console.log("\n-> Upload Complete! Rebooting RobCo OS...");
-
-                // Send \x10 to re-enable echo, then load() to trigger the soft reboot
                 await sendCmd('\n\x10load();\n', 500);
-
-                // We use a 500ms delay above so the command fully transmits 
-                // before Node.js forcefully closes the serial connection.
                 port.close();
                 resolve();
-
             } catch (err) {
                 console.error("\n[!] Upload interrupted.");
                 reject(err);
@@ -129,7 +132,6 @@ async function uploadToPipboy(code, portPath) {
 
         port.on('error', (err) => {
             console.error(`\n[!] Serial Port Error: ${err.message}`);
-            console.error("[!] Double-check that VSCode or the Web IDE is disconnected from the port.");
             reject(err);
         });
     });

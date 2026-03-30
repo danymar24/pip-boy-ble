@@ -1,6 +1,8 @@
 
 
-// --- 6. THE SURGICAL MENU INJECTION ---
+/**
+ * STAT MENU INJECTION
+ */
 if (MODEINFO && MODEINFO[1] && MODEINFO[1].submenu) {
     var originalSubmenu = MODEINFO[1].submenu;
     var newSubmenu = {};
@@ -13,6 +15,26 @@ if (MODEINFO && MODEINFO[1] && MODEINFO[1].submenu) {
     }
     MODEINFO[1].submenu = newSubmenu;
 }
+
+/**
+ * INV MENU INJECTION
+ */
+if (MODEINFO && MODEINFO[2] && MODEINFO[2].submenu) {
+    var originalSubmenu = MODEINFO[2].submenu;
+    var newSubmenu = {};
+
+    if (originalSubmenu[""]) newSubmenu[""] = originalSubmenu[""];
+    newSubmenu["SHUTTER"] = Pip.startCameraApp;
+
+    for (var key in originalSubmenu) {
+        if (key !== "") newSubmenu[key] = originalSubmenu[key];
+    }
+    MODEINFO[2].submenu = newSubmenu;
+}
+
+/**
+ * DATA MENU INJECTION
+ */
 
 if (MODEINFO && MODEINFO[3] && MODEINFO[3].submenu) {
     var originalSubmenu = MODEINFO[3].submenu;
@@ -27,7 +49,31 @@ if (MODEINFO && MODEINFO[3] && MODEINFO[3].submenu) {
     MODEINFO[3].submenu = newSubmenu;
 }
 
-// --- 9. MAINTENANCE MENU INJECTION (The Interceptor Pattern) ---
+/**
+ * RADIO MENU INJECTION
+ */
+
+if (MODEINFO && MODEINFO[5]) {
+    var origRadioFn = MODEINFO[5].fn;
+    MODEINFO[5].submenu = {
+        "SPOTIFY": function () {
+            // Hand control over to our dedicated app state machine
+            Pip.startSpotifyApp();
+        },
+        "FM": function () {
+            // Clear the router menu listeners
+            if (typeof Pip.removeSubmenu === 'function') Pip.removeSubmenu();
+
+            // Execute the native Wand OS radio builder!
+            // This safely boots up the 50ms waveform loop and hardware knobs.
+            origRadioFn();
+        }
+    };
+}
+
+/**
+ * MAINTENANCE MENU INJECTION
+ */
 if (MODEINFO && MODEINFO[3] && MODEINFO[3].submenu && typeof MODEINFO[3].submenu["MAINTENANCE"] === 'function') {
 
     // Store the original Wand OS factory function
@@ -71,24 +117,5 @@ if (MODEINFO && MODEINFO[3] && MODEINFO[3].submenu && typeof MODEINFO[3].submenu
         // 5. Execute the original Wand OS function. 
         // It will build the menu and blindly pass it into our hijacked E.showMenu!
         origMaintenance();
-    };
-}
-
-// --- 10. RADIO MENU INJECTION (The Interceptor Pattern) ---
-if (MODEINFO && MODEINFO[5]) {
-    var origRadioFn = MODEINFO[5].fn;
-    MODEINFO[5].submenu = {
-        "SPOTIFY": function () {
-            // Hand control over to our dedicated app state machine
-            Pip.startSpotifyApp();
-        },
-        "FM": function () {
-            // Clear the router menu listeners
-            if (typeof Pip.removeSubmenu === 'function') Pip.removeSubmenu();
-
-            // Execute the native Wand OS radio builder!
-            // This safely boots up the 50ms waveform loop and hardware knobs.
-            origRadioFn();
-        }
     };
 }
