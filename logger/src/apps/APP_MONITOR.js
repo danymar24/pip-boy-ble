@@ -2,8 +2,13 @@
 // --- APP: UPLINK MONITOR ---
 // ==========================================
 Pip.serialLogs = ["UPLINK MONITOR INITIALIZED", "Awaiting Serial data..."];
-Pip.isMonitorActive = false;
+Pip.isMonitorActive = true;
 Pip.maxLogs = 10;
+
+if (typeof Pip.removeSubmenu === 'function') {
+    Pip.removeSubmenu();
+    Pip.removeSubmenu = null;
+}
 
 Pip.logMonitor = function (msg) {
     var cleanMsg = msg.replace(/\r/g, "").replace(/\n/g, "");
@@ -34,13 +39,13 @@ Pip.drawMonitor = function () {
     bC.flip();
 };
 
-Pip.startMonitorApp = function () {
-    Pip.isMonitorActive = true;
-    if (typeof Pip.removeSubmenu === 'function') Pip.removeSubmenu();
-    var prevRemove = Pip.removeSubmenu;
-    Pip.removeSubmenu = function () {
-        Pip.isMonitorActive = false;
-        if (prevRemove) prevRemove();
-    };
-    Pip.drawMonitor();
+Pip.removeSubmenu = function () {
+    Pip.isMonitorActive = false;
+    Pip.currentMenuTitle = "";
+    
+    delete Pip.drawMonitor;
+    
+    Pip.removeSubmenu = null; 
 };
+
+Pip.drawMonitor();

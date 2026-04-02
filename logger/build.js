@@ -7,134 +7,126 @@ const { SerialPort } = require('serialport');
 const srcDir = path.join(__dirname, 'src');
 const appsDir = path.join(srcDir, 'apps');
 const outDir = path.join(__dirname, 'USER_BOOT');
-const outputFile = path.join(outDir, 'daemon.min.js');
+const appsOutDir = path.join(outDir, 'apps');
 
-if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir);
-}
+// Ensure output directories exist
+if (!fs.existsSync(outDir)) fs.mkdirSync(outDir);
+if (!fs.existsSync(appsOutDir)) fs.mkdirSync(appsOutDir);
+
+// Standard Terser Config for Wand OS compatibility
+const terserConfig = {
+    compress: { dead_code: true, drop_console: false, passes: 2 },
+    mangle: {
+        reserved: [
+            'Pip', 'bC', 'g', 'E', 'MODE', 'Serial3', 'USB',
+            'checkMode', 'drawFooter', 'drawHeader', 'setTime'
+        ]
+    },
+    format: { comments: false }
+};
 
 console.log("RobCo OS Build Pipeline Initialized...");
 
 async function build() {
-    const fileList = [];
-
-    // 1. Collect Core Files from /src/ (00, 01, 02, 98, 99)
+    // --- PHASE 1: BUNDLE CORE FILES ---
+    console.log("\n-> Phase 1: Bundling Core System...");
+    
     const coreFiles = fs.readdirSync(srcDir, { withFileTypes: true })
         .filter(item => !item.isDirectory() && item.name.endsWith('.js'))
-        .map(item => ({
-            name: item.name,
-            fullPath: path.join(srcDir, item.name)
-        }));
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map(item => path.join(srcDir, item.name));
 
-    // 2. Collect App Files from /src/apps/ (03, 04, 05, etc.)
-    let appFiles = [];
-    if (fs.existsSync(appsDir)) {
-        appFiles = fs.readdirSync(appsDir)
-            .filter(f => f.endsWith('.js'))
-            .map(f => ({
-                name: f,
-                fullPath: path.join(appsDir, f)
-            }));
-    }
-
-    // 3. Combine and Sort by the XX_ prefix
-    const allFiles = [...coreFiles, ...appFiles].sort((a, b) => {
-        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    let coreCode = "";
+    coreFiles.forEach(filePath => {
+        console.log(`   + Merging Core: ${path.basename(filePath)}`);
+        coreCode += fs.readFileSync(filePath, 'utf8') + "\n";
     });
 
-    console.log(`-> Detected ${allFiles.length} files for the build sequence.`);
+    const minifiedCore = await minify(coreCode, terserConfig);
+    const coreOutPath = path.join(outDir, 'daemon.min.js');
+    fs.writeFileSync(coreOutPath, minifiedCore.code);
+    console.log(`   [!] Core Bundle Saved: ${coreOutPath}`);
 
-    let combinedCode = "";
+    // --- PHASE 2: MINIFY INDIVIDUAL APPS ---
+    console.log("\n-> Phase 2: Processing Individual Apps...");
+    
+    const appFiles = fs.readdirSync(appsDir).filter(f => f.endsWith('.js'));
+    const processedApps = [];
 
-    // 4. Merge content
-    allFiles.forEach(file => {
-        console.log(`-> Merging: ${file.name}`);
-        combinedCode += fs.readFileSync(file.fullPath, 'utf8') + "\n";
-    });
-
-    console.log("-> Running Terser Minification...");
-
-    try {
-        const minified = await minify(combinedCode, {
-            compress: {
-                dead_code: true,
-                drop_console: false, // Keep consoles for ESP32-S3 USB debugging
-                passes: 2
-            },
-            mangle: {
-                // Protecting native Wand OS hooks
-                reserved: [
-                    'Pip', 'bC', 'g', 'E', 'MODE', 'Serial3', 'USB',
-                    'checkMode', 'drawFooter', 'drawHeader', 'setTime'
-                ]
-            },
-            format: {
-                comments: false 
-            }
-        });
-
-        fs.writeFileSync(outputFile, minified.code);
-
-        const originalSize = Buffer.byteLength(combinedCode, 'utf8');
-        const newSize = Buffer.byteLength(minified.code, 'utf8');
-        const savings = ((1 - (newSize / originalSize)) * 100).toFixed(2);
-
-        console.log(`\nBuild Complete!`);
-        console.log(`Original Size : ${originalSize} bytes`);
-        console.log(`Minified Size : ${newSize} bytes (-${savings}%)`);
+    for (const file of appFiles) {
+        console.log(`   + Minifying App: ${file}`);
+        const appCode = fs.readFileSync(path.join(appsDir, file), 'utf8');
+        const minApp = await minify(appCode, terserConfig);
         
-        // Upload to the Pip-Boy hardware
-        await uploadToPipboy(minified.code, 'COM8');
-
-    } catch (err) {
-        console.error("Minification Failed:", err);
+        // Remove the XX_ prefix for the output filename if preferred, 
+        // or keep it to maintain sort order on the SD card.
+        const appOutPath = path.join(appsOutDir, file.replace('.js', '.min.js'));
+        fs.writeFileSync(appOutPath, minApp.code);
+        
+        processedApps.push({
+            localPath: appOutPath,
+            remotePath: `USER_BOOT/apps/${path.basename(appOutPath)}`
+        });
     }
+
+    // --- PHASE 3: DEPLOY TO HARDWARE ---
+    console.log("\n-> Phase 3: Deploying to Pip-Boy...");
+    
+    const portPath = 'COM8';
+    const port = new SerialPort({ path: portPath, baudRate: 115200 });
+
+    port.on('open', async () => {
+        console.log("-> Serial Connection Established.");
+        try {
+            // 1. Prepare remote directories
+            await sendCmd(port, '\x10', 100);
+            await sendCmd(port, `try{require('fs').mkdirSync('USER_BOOT');}catch(e){}\n`, 100);
+            await sendCmd(port, `try{require('fs').mkdirSync('USER_BOOT/apps');}catch(e){}\n`, 100);
+
+            // 2. Upload Core
+            await uploadFile(port, coreOutPath, 'USER_BOOT/daemon.min.js');
+
+            // 3. Upload Apps
+            for (const app of processedApps) {
+                await uploadFile(port, app.localPath, app.remotePath);
+            }
+
+            console.log("\n-> All Systems Operational. Rebooting...");
+            await sendCmd(port, '\n\x10load();\n', 500);
+            port.close();
+            console.log("Build and Deploy Complete!");
+
+        } catch (err) {
+            console.error("\n[!] Deployment Failed:", err);
+            port.close();
+        }
+    });
 }
 
-// ... (uploadToPipboy remains unchanged)
-async function uploadToPipboy(code, portPath) {
-    console.log(`\n-> Initiating Upload to Pipboy on ${portPath}...`);
-    const targetPath = 'USER_BOOT/daemon.min.js';
-
-    return new Promise((resolve, reject) => {
-        const port = new SerialPort({ path: portPath, baudRate: 115200 });
-        port.on('open', async () => {
-            const sendCmd = (str, delayMs = 50) => {
-                return new Promise(res => {
-                    port.write(str, () => {
-                        port.drain(() => { setTimeout(res, delayMs); });
-                    });
-                });
-            };
-
-            try {
-                await sendCmd('\x10', 100);
-                await sendCmd(`try{require('fs').mkdirSync('USER_BOOT');}catch(e){}\n`, 100);
-                await sendCmd(`require('fs').writeFileSync('${targetPath}', '');\n`, 200);
-
-                const chunkSize = 256;
-                for (let i = 0; i < code.length; i += chunkSize) {
-                    const chunk = code.substring(i, i + chunkSize);
-                    const safeChunk = JSON.stringify(chunk);
-                    await sendCmd(`require('fs').appendFileSync('${targetPath}', ${safeChunk});\n`, 30);
-                    process.stdout.write('.');
-                }
-
-                console.log("\n-> Upload Complete! Rebooting RobCo OS...");
-                await sendCmd('\n\x10load();\n', 500);
-                port.close();
-                resolve();
-            } catch (err) {
-                console.error("\n[!] Upload interrupted.");
-                reject(err);
-            }
-        });
-
-        port.on('error', (err) => {
-            console.error(`\n[!] Serial Port Error: ${err.message}`);
-            reject(err);
+// Reusable command sender
+function sendCmd(port, str, delayMs = 50) {
+    return new Promise(res => {
+        port.write(str, () => {
+            port.drain(() => { setTimeout(res, delayMs); });
         });
     });
+}
+
+// Reusable file uploader logic
+async function uploadFile(port, localPath, remotePath) {
+    const code = fs.readFileSync(localPath, 'utf8');
+    console.log(`\n-> Uploading ${path.basename(localPath)} to ${remotePath}...`);
+    
+    await sendCmd(port, `require('fs').writeFileSync('${remotePath}', '');\n`, 200);
+
+    const chunkSize = 256;
+    for (let i = 0; i < code.length; i += chunkSize) {
+        const chunk = code.substring(i, i + chunkSize);
+        const cmd = `require('fs').appendFileSync('${remotePath}', ${JSON.stringify(chunk)});\n`;
+        await sendCmd(port, cmd, 30);
+        process.stdout.write('.');
+    }
+    console.log(" [OK]");
 }
 
 build();

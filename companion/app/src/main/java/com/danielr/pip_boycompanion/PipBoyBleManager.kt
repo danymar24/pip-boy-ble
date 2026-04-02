@@ -10,11 +10,15 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 @SuppressLint("MissingPermission")
@@ -47,6 +51,13 @@ object PipBoyBleManager {
     private var bluetoothGatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var notifyCharacteristic: BluetoothGattCharacteristic? = null
+    
+    // State Tracking
+    private var hasSyncedTimeThisSession = false
+    private val bleScope = CoroutineScope(Dispatchers.IO)
+    
+    // We need an application context reference to dispatch broadcasts when we get specific BLE commands
+    private var appContext: Context? = null
 
     private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
@@ -60,6 +71,7 @@ object PipBoyBleManager {
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
                 log("Connected. Requesting MTU 512...")
                 _connectionState.value = ConnectionState.Connected
+                hasSyncedTimeThisSession = false // Reset sync state for the new session
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     gatt.requestMtu(512)
                 } else {
@@ -132,6 +144,12 @@ object PipBoyBleManager {
                         }
                     }
                 }
+                
+                // --- AUTO-SYNC HOOK ---
+                if (writeCharacteristic != null && !hasSyncedTimeThisSession) {
+                    autoSyncPipBoyTime()
+                }
+                
             } else {
                 log("Service discovery failed: $status")
             }
@@ -158,9 +176,7 @@ object PipBoyBleManager {
             super.onCharacteristicChanged(gatt, characteristic)
             val data = characteristic.value
             if (data != null) {
-                val message = String(data, Charsets.UTF_8)
-                _incomingMessages.tryEmit(message)
-                log("Recv: ${message.trimEnd().take(15)}")
+                handleIncomingMessage(String(data, Charsets.UTF_8))
             }
         }
 
@@ -170,14 +186,45 @@ object PipBoyBleManager {
             value: ByteArray
         ) {
             super.onCharacteristicChanged(gatt, characteristic, value)
-            val message = String(value, Charsets.UTF_8)
-            _incomingMessages.tryEmit(message)
-            log("Recv: ${message.trimEnd().take(15)}")
+            handleIncomingMessage(String(value, Charsets.UTF_8))
+        }
+    }
+    
+    /**
+     * Automatically retrieves the current Android system time, formats it perfectly,
+     * and writes it directly to the BLE buffer shortly after a successful connection.
+     */
+    private fun autoSyncPipBoyTime() {
+        hasSyncedTimeThisSession = true
+        
+        bleScope.launch {
+            // Delay slightly to ensure CCCD descriptors and GATT buffers are completely stable
+            delay(500)
+            
+            val timestamp = System.currentTimeMillis() / 1000
+            val command = "TIME|${timestamp}.0\n"
+            
+            sendData(command)
+            log("AUTO-SYNC: Time sent to Pip-Boy")
+        }
+    }
+
+    private fun handleIncomingMessage(message: String) {
+        _incomingMessages.tryEmit(message)
+        log("Recv: ${message.trimEnd().take(15)}")
+        
+        // Immediately dispatch broadcast if it is the Camera Take command
+        if (message.trim() == "CAM|TAKE") {
+            appContext?.let { ctx ->
+                val intent = android.content.Intent(RobCoAccessibilityService.ACTION_TAKE_PHOTO)
+                ctx.sendBroadcast(intent)
+            }
         }
     }
 
     @Synchronized
     fun connect(context: Context, macAddress: String) {
+        appContext = context.applicationContext
         val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
         val device = adapter?.getRemoteDevice(macAddress) ?: return
         
@@ -188,7 +235,7 @@ object PipBoyBleManager {
         log("Connecting to $macAddress...")
         _connectionState.value = ConnectionState.Connecting
         
-        bluetoothGatt = device.connectGatt(context.applicationContext, true, gattCallback)
+        bluetoothGatt = device.connectGatt(appContext, true, gattCallback)
     }
 
     @Synchronized

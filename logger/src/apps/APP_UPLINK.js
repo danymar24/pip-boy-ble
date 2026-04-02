@@ -1,4 +1,3 @@
-
 // --- 5. NATIVE INBOX UI ---
 Pip.readNotification = function (idx) {
     Pip.releaseKnob();
@@ -28,26 +27,25 @@ Pip.readNotification = function (idx) {
         } else {
             Pip.audioStart("UI/ROT_V_1.wav");
         }
-        Pip.submenuUplink();
+        Pip.loadApp("APP_NOTIF.min.js");
     };
     Pip.on('knob1', knobHandler);
     Pip.removeSubmenu = function () { Pip.removeListener('knob1', knobHandler); };
 };
 
-Pip.submenuUplink = function () {
-    Pip.releaseKnob();
-    var menu = { "": { title: "COMMUNICATIONS UPLINK" } };
-    if (Pip.notifications.length === 0) {
-        menu["NO MESSAGES"] = function () { };
-    } else {
-        Pip.notifications.forEach(function (n, idx) {
-            menu[(idx + 1) + ". " + n.title] = function () { Pip.readNotification(idx); };
-        });
-        menu["CLEAR ALL"] = function () {
-            Pip.notifications = [];
-            Pip.audioStart("UI/CANCEL.wav");
-            Pip.submenuUplink();
-        };
-    }
-    E.showMenu(menu);
-};
+Pip.releaseKnob();
+Pip.currentMenuTitle = "COMMUNICATIONS UPLINK";
+var menu = { "": { title: "COMMUNICATIONS UPLINK" } };
+if (Pip.notifications.length === 0) {
+    menu["NO MESSAGES"] = function () { };
+} else {
+    Pip.notifications.forEach(function (n, idx) {
+        menu[(idx + 1) + ". " + n.title] = function () { Pip.readNotification(idx); };
+    });
+    menu["CLEAR ALL"] = function () {
+        Pip.notifications = [];
+        Pip.audioStart("UI/CANCEL.wav");
+        Pip.loadApp("APP_NOTIF.min.js");
+    };
+}
+E.showMenu(menu);
