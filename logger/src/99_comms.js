@@ -60,7 +60,7 @@ Pip.handleData = function (data) {
         Pip.notifications.unshift({ title: sender, body: body });
         if (Pip.notifications.length > 5) Pip.notifications.pop();
         Pip.showNotification("> INCOMING TRANSMISSION", msg);
-        if (Pip.currentMenuTitle === "COMMUNICATIONS UPLINK") Pip.submenuUplink();
+        if (Pip.currentMenuTitle === "COMMUNICATIONS UPLINK" && typeof Pip.submenuUplink === 'function') Pip.submenuUplink();
       }
       else if (pCmd === "PWR") {
         var pwrCmd = parts[1].trim().toUpperCase();
@@ -75,7 +75,7 @@ Pip.handleData = function (data) {
       else if (pCmd === "CLEAR") {
         var clr = parts[1].trim();
         Pip.notifications = (clr === "ALL") ? [] : Pip.notifications.filter(n => n.title !== clr);
-        if (Pip.currentMenuTitle === "COMMUNICATIONS UPLINK") Pip.submenuUplink();
+        if (Pip.currentMenuTitle === "COMMUNICATIONS UPLINK" && typeof Pip.submenuUplink === 'function') Pip.submenuUplink();
       }
       else if (pCmd === "SET") {
         var sM = parts[1], sI = sM.indexOf(":");
@@ -97,7 +97,7 @@ Pip.handleData = function (data) {
             settings.color.r = Math.round(r * 255); settings.color.g = Math.round(gr * 255); settings.color.b = Math.round(b * 255);
           }
           Pip.showNotification("> THEME OVERRIDE", "Color updated.");
-          if (Pip.currentMenuTitle === "COMMUNICATIONS UPLINK") Pip.submenuUplink();
+          if (Pip.currentMenuTitle === "COMMUNICATIONS UPLINK" && typeof Pip.submenuUplink === 'function') Pip.submenuUplink();
         }
       }
       else if (pCmd === "ALARM") {
