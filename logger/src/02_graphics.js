@@ -5,6 +5,8 @@ Pip.isDimmed = false;
 Pip.isAsleep = false;
 Pip.appScreenXBound = 380;
 Pip.appScreenYBound = 204;
+icons.cog = atob('gMBwMBgA');
+icons.holotape = atob('gMBwMBgA');
 
 Pip.setPowerState = function (state) {
     if (state === "WAKE") {
@@ -52,7 +54,15 @@ bC.flip = function (a) {
   return Pip.originalFlip.apply(bC, arguments);
 };
 
+Pip.notifTimer = null;
+
 Pip.showNotification = function (header, text) {
+
+    if (Pip.notifTimer) {
+        clearTimeout(Pip.notifTimer);
+        Pip.notifTimer = null;
+    }
+
     Pip.audioStart("UI/ALERT.wav");
     Pip.notifHeader = header;
     Pip.notifBody = text;
@@ -81,9 +91,25 @@ Pip.showNotification = function (header, text) {
     g.setFontAlign(-1, -1);
     g.setFont("6x8", 1);
 
-    if (Pip.notifTimeout) clearTimeout(Pip.notifTimeout);
-    Pip.notifTimeout = setTimeout(function () {
-        Pip.isNotifActive = false;
-        bC.flip();
-    }, 5000);
+    Pip.notifTimer = setTimeout(function () {
+        Pip.isNotifActive = false; // Lift the freeze-frame lock
+        Pip.notifTimer = null;     // Free the memory
+
+        // 4. THE WIPE: Force the OS to redraw whatever was underneath the popup
+        if (Pip.isHomeActive && typeof Pip.drawHome === 'function') {
+            Pip.drawHome();
+        } 
+        else if (Pip.isSpotifyActive && typeof Pip.drawSpotify === 'function') {
+            Pip.drawSpotify();
+        } 
+        else if (Pip.isStatusActive && typeof Pip.drawStatus === 'function') {
+            Pip.drawStatus();
+        }
+        else if (typeof E !== 'undefined' && typeof MODEINFO !== 'undefined' && typeof MODE !== 'undefined') {
+            // If no custom app is open, force the native Wand OS to redraw the current menu
+            if (MODEINFO[MODE] && MODEINFO[MODE].submenu) {
+                E.showMenu(MODEINFO[MODE].submenu);
+            }
+        }
+    }, 10000);
 };

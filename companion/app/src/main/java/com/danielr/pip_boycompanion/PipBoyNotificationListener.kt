@@ -11,6 +11,7 @@ import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.view.KeyEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -120,21 +121,27 @@ class PipBoyNotificationListener : NotificationListenerService() {
     }
 
     /**
-     * Helper function to safely adjust volume.
-     * Offloads the actual adjustment to the IO dispatcher so the BLE thread isn't blocked.
+     * Helper function to safely adjust volume with debouncing.
      */
     private fun adjustVolume(audioManager: AudioManager, direction: Int) {
         serviceScope.launch(Dispatchers.IO) {
             val isRemotePlayback = activeMediaController?.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
             
             if (isRemotePlayback) {
+                // If casting to a Nest Hub/Chromecast, pipe volume to the active remote session
                 activeMediaController?.adjustVolume(direction, AudioManager.FLAG_SHOW_UI)
             } else {
+                // If listening locally, explicitly target STREAM_MUSIC to ensure media volume changes, 
+                // but also dispatch standard media button keys just to be perfectly compatible with background Spotify
                 audioManager.adjustStreamVolume(
                     AudioManager.STREAM_MUSIC,
                     direction,
                     AudioManager.FLAG_SHOW_UI
                 )
+                
+                val keyCode = if (direction == AudioManager.ADJUST_RAISE) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
+                audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
             }
         }
     }

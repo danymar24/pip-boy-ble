@@ -2,6 +2,7 @@ package com.danielr.pip_boycompanion
 
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
+import android.app.Instrumentation
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -85,6 +86,9 @@ class RobCoAccessibilityService : AccessibilityService() {
     private fun dispatchVolumeUpEvent() {
         // Send a media key event for Volume Up (KEYCODE_VOLUME_UP) which triggers the camera shutter
         // while the camera app is in the foreground.
+        val instrumentation = Instrumentation()
+        instrumentation.sendKeyDownUpSync( KeyEvent.KEYCODE_VOLUME_UP)
+
         val intentDown = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
             putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP))
         }

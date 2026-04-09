@@ -1,18 +1,15 @@
-// ==========================================
-// --- APP: SPOTIFY ---
-// ==========================================
+Pip.isSpotifyActive = true;
+Pip.currentMenuTitle = "SPOTIFY UPLINK";
 
-Pip.spotifySong = "";
-Pip.spotifyArtist = "";
-Pip.isSpotifyActive = false;
-Pip.btnPressed = false;
-Pip.e1Pressed = false;
-Pip.e2Pressed = false;
-
+// 1. Wipe out any existing hooks immediately 
 if (typeof Pip.removeSubmenu === 'function') {
     Pip.removeSubmenu();
     Pip.removeSubmenu = null;
 }
+
+// Ensure string defaults if data hasn't arrived yet
+if (!Pip.spotifySong) Pip.spotifySong = "NOT PLAYING";
+if (!Pip.spotifyArtist) Pip.spotifyArtist = "";
 
 Pip.drawSpotify = function () {
     if (!Pip.isSpotifyActive) return;
@@ -21,88 +18,75 @@ Pip.drawSpotify = function () {
     bC.drawRect(10, 20, Pip.appScreenXBound, Pip.appScreenYBound);
     bC.setFontAlign(0, 0);
 
-    if (Pip.spotifySong === "") {
+    if (Pip.spotifySong === "" || Pip.spotifySong === "NOT PLAYING") {
         bC.setFont("Vector", 25);
-        bC.drawString("NOT PLAYING", Pip.appScreenXBound / 2, Pip.appScreenYBound / 2);
+        bC.drawString("NOT PLAYING", Pip.appScreenXBound / 2, 120);
     } else {
         bC.setFont("Vector", 30);
-        bC.drawString(Pip.spotifySong, Pip.appScreenXBound / 2, Pip.appScreenYBound / 2);
+        bC.drawString(Pip.spotifySong, Pip.appScreenXBound / 2, 100);
         bC.setFont("Vector", 18);
-        bC.drawString(Pip.spotifyArtist, Pip.appScreenXBound / 2, Pip.appScreenYBound / 2 + 40);
+        bC.drawString(Pip.spotifyArtist, Pip.appScreenXBound / 2, 140);
     }
     bC.flip();
 };
 
-Pip.isSpotifyActive = true;
-
-Pip.origRadioKPSS = Pip.radioKPSS;
+// ==========================================
+// MUTE THE NATIVE RADIO
+// ==========================================
+Pip.origRadioKPSS = Pip.radioKPSS; 
 Pip.radioKPSS = false;
-var origRadioPlayClip = typeof radioPlayClip !== 'undefined' ? radioPlayClip : null;
-if (origRadioPlayClip) radioPlayClip = function () { return; };
-if (typeof rd !== 'undefined' && !Pip.origRdEnable) {
-    Pip.origRdEnable = rd.enable;
-    rd.enable = function () { return; };
+Pip.origRadioPlayClip = typeof radioPlayClip !== 'undefined' ? radioPlayClip : null;
+if (Pip.origRadioPlayClip) radioPlayClip = function () { return; };
+if (typeof rd !== 'undefined' && !Pip.origRdEnable) { 
+    Pip.origRdEnable = rd.enable; 
+    rd.enable = function () { return; }; 
 }
 
-if (Pip.spotifyDaemon) clearInterval(Pip.spotifyDaemon);
-
-pinMode(A1, "input_pullup");
-pinMode(E1, "input_pullup");
+// ==========================================
+// THE FIX: HARDWARE INTERRUPTS
+// ==========================================
+pinMode(A1, "input_pullup"); 
+pinMode(E1, "input_pullup"); 
 pinMode(E2, "input_pullup");
 
-Pip.btnPressed = (digitalRead(A1) === 0);
-Pip.e1Pressed = (digitalRead(E1) === 0);
-Pip.e2Pressed = (digitalRead(E2) === 0);
+// Instead of a 20ms loop, these sit completely idle until the button is physically pushed.
+// "debounce: 50" prevents the physical metal spring in the button from registering double-clicks.
+Pip.wA1 = setWatch(function() { Serial3.print("SPOT|PAUSE\n"); }, A1, { repeat: true, edge: "falling", debounce: 50 });
+Pip.wE1 = setWatch(function() { Serial3.print("SPOT|NEXT\n"); }, E1, { repeat: true, edge: "falling", debounce: 50 });
+Pip.wE2 = setWatch(function() { Serial3.print("SPOT|PREV\n"); }, E2, { repeat: true, edge: "falling", debounce: 50 });
 
-Pip.spotifyDaemon = setInterval(function () {
-    try {
-        Pip.radioKPSS = false;
-
-        var a1State = digitalRead(A1);
-        var e1State = digitalRead(E1);
-        var e2State = digitalRead(E2);
-
-        if (a1State === 0 && !Pip.btnPressed) {
-            Pip.btnPressed = true;
-            Serial3.print("SPOT|PAUSE\n");
-        } else if (a1State === 1 && Pip.btnPressed) {
-            Pip.btnPressed = false;
-        }
-
-        if (e1State === 0 && !Pip.e1Pressed) {
-            Pip.e1Pressed = true;
-            Serial3.print("SPOT|NEXT\n");
-        } else if (e1State === 1 && Pip.e1Pressed) {
-            Pip.e1Pressed = false;
-        }
-
-        if (e2State === 0 && !Pip.e2Pressed) {
-            Pip.e2Pressed = true;
-            Serial3.print("SPOT|PREV\n");
-        } else if (e2State === 1 && Pip.e2Pressed) {
-            Pip.e2Pressed = false;
-        }
-
-    } catch (e) { }
-}, 20);
-
+// Handle the top dial turning and clicking
 Pip.removeAllListeners("knob1");
+Pip.on("knob1", (d) => d !== 0 ? Serial3.write("SPOT|" + (d > 0 ? "UP" : "DOWN") + "\n") : Serial3.write("SPOT|CLICK\n"));
 
-Pip.on("knob1", (d) =>
-    d !== 0 ? Serial3.write("SPOT|" + (d > 0 ? "UP" : "DOWN") + "\n") : Serial3.write("SPOT|CLICK\n")
-);
-
+// ==========================================
+// TEARDOWN & GARBAGE COLLECTION
+// ==========================================
 Pip.removeSubmenu = function () {
     Pip.isSpotifyActive = false;
     Pip.currentMenuTitle = "";
-    if (Pip.spotifyDaemon) clearInterval(Pip.spotifyDaemon);
-    if (origRadioPlayClip) radioPlayClip = origRadioPlayClip;
+
+    // 1. Destroy the hardware interrupt tripwires
+    clearWatch(Pip.wA1);
+    clearWatch(Pip.wE1);
+    clearWatch(Pip.wE2);
+    Pip.removeAllListeners("knob1");
+
+    // 2. Restore the native radio functionality
+    if (Pip.origRadioPlayClip) radioPlayClip = Pip.origRadioPlayClip;
     if (typeof rd !== 'undefined' && Pip.origRdEnable) rd.enable = Pip.origRdEnable;
     Pip.radioKPSS = Pip.origRadioKPSS;
-    Pip.removeAllListeners("knob1");
+
+    // 3. Clear RAM
     delete Pip.drawSpotify;
-    
-    Pip.removeSubmenu = null; 
+    delete Pip.wA1;
+    delete Pip.wE1;
+    delete Pip.wE2;
+    delete Pip.origRadioPlayClip;
+    delete Pip.origRadioKPSS;
+    delete Pip.origRdEnable;
+
+    Pip.removeSubmenu = null;
 };
 
 Pip.drawSpotify();
