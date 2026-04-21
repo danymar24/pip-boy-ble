@@ -5,6 +5,7 @@
 Pip.isHomeActive = true;
 Pip.currentMenuTitle = "HOME";
 
+// 1. Wipe out any existing hooks immediately
 if (typeof Pip.removeSubmenu === 'function') {
     Pip.removeSubmenu();
     Pip.removeSubmenu = null;
@@ -12,6 +13,9 @@ if (typeof Pip.removeSubmenu === 'function') {
 
 Pip.drawHome = function () {
     if (!Pip.isHomeActive) return;
+    
+    // THE CPU SAVER: If a notification is on screen, don't waste CPU rendering the background!
+    if (Pip.isNotifActive) return; 
 
     bC.clear(1);
     bC.setColor(g.theme.fg);
@@ -72,13 +76,25 @@ Pip.drawHome = function () {
     bC.flip();
 };
 
+// ==========================================
+// 2. THE UI HEARTBEAT (1 Frame Per Second)
+// ==========================================
+Pip.homeHeartbeat = setInterval(Pip.drawHome, 1000);
+
+// 3. The Teardown 
 Pip.removeSubmenu = function () {
     Pip.isHomeActive = false;
     Pip.currentMenuTitle = "";
-    
+
+    // Murder the heartbeat so it doesn't bleed into other apps
+    if (Pip.homeHeartbeat) {
+        clearInterval(Pip.homeHeartbeat);
+        Pip.homeHeartbeat = null;
+    }
+
     delete Pip.drawHome;
-    
-    Pip.removeSubmenu = null; 
+    Pip.removeSubmenu = null;
 };
 
+// Draw once immediately upon loading
 Pip.drawHome();

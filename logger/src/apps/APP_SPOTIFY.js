@@ -66,10 +66,14 @@ Pip.removeSubmenu = function () {
     Pip.isSpotifyActive = false;
     Pip.currentMenuTitle = "";
 
-    // 1. Destroy the hardware interrupt tripwires
-    clearWatch(Pip.wA1);
-    clearWatch(Pip.wE1);
-    clearWatch(Pip.wE2);
+    // ==========================================
+    // THE FIX: DEFENSIVE CLEARING
+    // Only clear the watch if it actually exists!
+    // ==========================================
+    if (Pip.wA1 !== undefined) clearWatch(Pip.wA1);
+    if (Pip.wE1 !== undefined) clearWatch(Pip.wE1);
+    if (Pip.wE2 !== undefined) clearWatch(Pip.wE2);
+    
     Pip.removeAllListeners("knob1");
 
     // 2. Restore the native radio functionality
