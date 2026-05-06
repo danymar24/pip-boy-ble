@@ -121,6 +121,9 @@ if (MODEINFO && MODEINFO[3] && MODEINFO[3].submenu) {
                         setTimeout(function () { E.showMenu(menuObj); }, 1500);
                     } catch (e) { }
                 };
+                menuObj["Calibrate Gyroscope"] = function () {
+                    Pip.loadApp("APP_CALIB.min.js");
+                };
                 menuObj["Uplink Monitor"] = function() { Pip.loadApp("APP_MONITOR.min.js"); };
                 E.showMenu = origShowMenu;
                 E.showMenu(menuObj);

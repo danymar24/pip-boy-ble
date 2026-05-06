@@ -22,6 +22,9 @@ Adafruit_BME680 bme;
 Adafruit_MPU6050 mpu;
 MAX30105 particleSensor;
 
+float mountAngle = 40.0; 
+
+
 // I2C Pin Definition for ESP32-S3
 #define I2C_SDA 8 
 #define I2C_SCL 9
@@ -63,49 +66,57 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 };
 
 // --- Tap Detection Globals ---
-float lastAccelZ = 0;
+float lastMag = 9.8; // Baseline Earth Gravity
 unsigned long lastTapTime = 0;
-const float tapThreshold = 15.0; // Adjust based on sensitivity (15 m/s^2 is a sharp jolt)
+const float tapThreshold = 10.0; // Lowered slightly since we are reading total magnitude
 const int tapDebounce = 300;     // Ms between allowed taps
 
 void detectTap(sensors_event_t a) {
-  // We look for a sudden change (delta) in acceleration
-  float deltaZ = abs(a.acceleration.z - lastAccelZ);
-  
-  if (deltaZ > tapThreshold && (millis() - lastTapTime > tapDebounce)) {
+  // 1. Calculate the total force vector across all 3 axes
+  float currentMag = sqrt(pow(a.acceleration.x, 2) + 
+                          pow(a.acceleration.y, 2) + 
+                          pow(a.acceleration.z, 2));
+
+  // 2. Look for a sudden, sharp spike in overall force
+  float delta = abs(currentMag - lastMag);
+
+  if (delta > tapThreshold && (millis() - lastTapTime > tapDebounce)) {
     lastTapTime = millis();
     
-    // Send the command to the Pip-Boy via Serial1
     Serial1.print("ACT|TAP\n"); 
     Serial.println("Gesture: Tap Detected!");
   }
   
-  lastAccelZ = a.acceleration.z;
+  lastMag = currentMag;
 }
 
-float lastAy = 0;
+// --- Wake Detection Globals ---
 bool isAwake = true;
 unsigned long lastMoveTime = 0;
 
 void detectLiftToWake(sensors_event_t a, sensors_event_t g) {
-  // A 'Viewing' position typically means:
-  // 1. The Y-axis (along your arm) is tilted up.
-  // 2. The Z-axis (out of screen) is facing up towards you.
-  
-  // Normalized gravity detection (Assuming MPU6050 is flat behind the screen)
-  // Values are in m/s^2. 9.8 = 1G.
-  bool verticalTilt = a.acceleration.y > 6.0; // Arm tilted up
-  bool faceUp = a.acceleration.z > 5.0;     // Screen facing up
+  // 1. Define your physical mounting angle
+  // (Change to -40.0 if the sensor is tilted in the opposite direction)
+  float rad = mountAngle * (PI / 180.0);
+
+  // 2. The Virtual Rotation Matrix
+  // This mathematically flattens the Y and Z axes to match the screen
+  float flatY = (a.acceleration.y * cos(rad)) - (a.acceleration.z * sin(rad));
+  float flatZ = (a.acceleration.y * sin(rad)) + (a.acceleration.z * cos(rad));
+
+  // 3. Evaluate the corrected "flat" vectors
+  bool verticalTilt = flatY > 6.0; // Arm tilted up
+  bool faceUp = flatZ > 5.0;       // Screen facing up
 
   if (verticalTilt && faceUp) {
     if (!isAwake) {
       isAwake = true;
-      Serial1.print("ACT|LIFTED\n"); // Send custom power command to JS
+      Serial1.print("ACT|LIFTED\n"); 
       Serial.println("Gesture: Wake Triggered");
     }
     lastMoveTime = millis();
   } else {
-    // Auto-sleep logic: If no 'viewing' orientation for 10 seconds
+    // Auto-sleep logic: 10 seconds of no viewing angle
     if (isAwake && (millis() - lastMoveTime > 10000)) {
       isAwake = false;
       Serial1.print("ACT|DOWN\n");
@@ -205,6 +216,34 @@ void loop() {
       Serial.println("Reboot command received from Pip-Boy! Restarting ESP32...");
       delay(500); // Brief pause to ensure the serial monitor prints the message
       ESP.restart();  // This triggers a hard reset of the ESP32
+    }
+    else if (commandCheck == "SYS|CALIB") {
+      Serial.println("Calculating new Gyroscope baseline...");
+      
+      float sumY = 0;
+      float sumZ = 0;
+      
+      // Take 20 rapid readings of the gravity vectors
+      for(int i = 0; i < 20; i++) {
+        sensors_event_t a, g, temp;
+        mpu.getEvent(&a, &g, &temp);
+        sumY += a.acceleration.y;
+        sumZ += a.acceleration.z;
+        delay(50); 
+      }
+      
+      // Average the readings to filter out any micro-vibrations from the table
+      float avgY = sumY / 20.0;
+      float avgZ = sumZ / 20.0;
+      
+      // Calculate the exact mounting angle in degrees
+      mountAngle = atan2(avgY, avgZ) * (180.0 / PI);
+      
+      Serial.print("New Mount Angle applied: ");
+      Serial.println(mountAngle);
+      
+      // Ping the Pip-Boy with a confirmation notification
+      Serial1.print("NOTIF|SYS:GYRO MATRICES SYNCED\n");
     }
 
     fromPipBoy += "\n";

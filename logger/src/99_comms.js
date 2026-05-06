@@ -1,18 +1,28 @@
-// --- 7. ZERO-ALLOCATION SERIAL PARSER ---
+// --- 7. SERIAL PARSER & DAEMONS ---
 Pip.rem = "";
-Pip.geigerTimeout = null;
+Pip.currentDanger = 0; // The parser will update this silently
 
-Pip.handleGeiger = function (dangerLvl) {
-  if (Pip.geigerTimeout) clearTimeout(Pip.geigerTimeout);
-  if (dangerLvl > 15) {
-    var baseDelay = 1000 - ((dangerLvl - 15) / 85) * 900;
+// THE FIX: Autonomous Geiger Daemon (No closure spam!)
+if (Pip.geigerTimeout) clearTimeout(Pip.geigerTimeout);
+
+Pip.geigerTick = function () {
+  if (Pip.currentDanger > 15) {
+    // Math: Calculate speed based on current danger
+    var baseDelay = 1000 - ((Pip.currentDanger - 15) / 85) * 900;
     var randomDelay = Math.max(50, baseDelay + ((Math.random() * 300) - 150));
-    Pip.geigerTimeout = setTimeout(function tick() {
-      if (typeof Pip.audioStart === 'function') Pip.audioStart("UI/ROT_V_1.wav");
-      Pip.handleGeiger(dangerLvl);
-    }, randomDelay);
+
+    if (typeof Pip.audioStart === 'function') Pip.audioStart("UI/ROT_V_1.wav");
+    if (typeof Pip.updateHardwareLEDs === 'function') Pip.updateHardwareLEDs(Pip.currentDanger);
+
+    Pip.geigerTimeout = setTimeout(Pip.geigerTick, randomDelay);
+  } else {
+    // If safe, just go to sleep for a second and check again later
+    if (typeof Pip.updateHardwareLEDs === 'function') Pip.updateHardwareLEDs(0);
+    Pip.geigerTimeout = setTimeout(Pip.geigerTick, 1000);
   }
 };
+// Kick off the daemon once during boot
+Pip.geigerTick();
 
 Pip.handleData = function (data) {
   var lines = (Pip.rem + data).split('\n');
@@ -45,10 +55,10 @@ Pip.handleData = function (data) {
           Pip.telemetry[key] = val;
 
           if (key === "WEAT") {
-            var envParts = val.split(" "), gVal = envParts.length > 2 ? parseFloat(envParts[2]) : 50;
-            var dangerLvl = 100 - Math.max(0, Math.min(100, (gVal / 50) * 100));
-            Pip.handleGeiger(dangerLvl);
-            if (typeof Pip.updateHardwareLEDs === 'function') Pip.updateHardwareLEDs(dangerLvl);
+            var envParts = val.split(" ");
+            var gVal = envParts.length > 2 ? parseFloat(envParts[2]) : 50;
+            // Update the global variable silently. The daemon will read it on its next tick!
+            Pip.currentDanger = 100 - Math.max(0, Math.min(100, (gVal / 50) * 100));
           }
           if (Pip.isHomeActive && typeof Pip.drawHome === 'function') Pip.drawHome();
         }
