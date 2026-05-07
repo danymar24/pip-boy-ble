@@ -7,6 +7,14 @@
 #include <Adafruit_MPU6050.h>
 #include "MAX30105.h" 
 #include "heartRate.h"
+#include "soc/rtc_cntl_reg.h"
+#include <WiFi.h>
+#include <ArduinoOTA.h>
+
+// --- OTA Globals ---
+const char* ssid = "Rdz";
+const char* password = "3%j95gs7i%7b";
+bool otaModeActive = false;
 
 // --- BLE Globals ---
 BLEServer *pServer = NULL;
@@ -28,6 +36,8 @@ float mountAngle = 40.0;
 // I2C Pin Definition for ESP32-S3
 #define I2C_SDA 8 
 #define I2C_SCL 9
+
+SemaphoreHandle_t i2cMutex;
 
 // --- Biometric Logic ---
 const byte RATE_SIZE = 4; 
@@ -128,47 +138,74 @@ void detectLiftToWake(sensors_event_t a, sensors_event_t g) {
 // --- Sensor Task: Biometrics (High Priority) ---
 void BioTask(void * parameter) {
   for(;;) {
-    long irValue = particleSensor.getIR();
+    long irValue = 0;
+    
+    // Ask the traffic cop for permission to use the I2C wire
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+      irValue = particleSensor.getIR();
+      xSemaphoreGive(i2cMutex); // Release the wire!
+    }
+
     if (irValue > 50000) { 
       if (checkForBeat(irValue) == true) {
         long delta = millis() - lastBeat;
         lastBeat = millis();
         beatsPerMinute = 60 / (delta / 1000.0);
-
         if (beatsPerMinute < 255 && beatsPerMinute > 20) {
-          rates[rateSpot++] = (byte)beatsPerMinute; 
+          rates[rateSpot++] = (byte)beatsPerMinute;
           rateSpot %= RATE_SIZE;
           beatAvg = 0;
           for (byte x = 0 ; x < RATE_SIZE ; x++) beatAvg += rates[x];
           beatAvg /= RATE_SIZE;
 
-          // Aligning with RobCo OS DASH protocol
           Serial1.print("DASH|BIO:BPM:" + String(beatAvg) + "\n");
         }
       }
     }
-    vTaskDelay(10 / portTICK_PERIOD_MS); 
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
 // --- Sensor Task: Environment/Hazmat (Low Priority) ---
 void EnvTask(void * parameter) {
+  unsigned long lastBmeRead = 0;
+  
   for(;;) {
     sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
     
-    detectLiftToWake(a, g); // Check for gesture every 500ms
+    // 1. FAST READ: Get Gyroscope data safely
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+      mpu.getEvent(&a, &g, &temp);
+      xSemaphoreGive(i2cMutex); 
+    }
+    
+    detectLiftToWake(a, g); 
     detectTap(a);
 
-    if (bme.performReading()) {
-      float tempF = (bme.temperature * 1.8) + 32.0;
-      // Formatting for the Pip-Boy's INV tab hijack
-      String envData = "DASH|WEAT:" + String(tempF, 1) + "F " + 
-                       String(bme.humidity, 0) + "% " + 
-                       String(bme.gas_resistance / 1000.0, 1) + "kOhm\n";
-      Serial1.print(envData);
+    // 2. SLOW READ: Only poll the weather sensor every 2000ms
+    if (millis() - lastBmeRead > 2000) {
+      lastBmeRead = millis();
+      bool bmeSuccess = false;
+      
+      if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+        bmeSuccess = bme.performReading();
+        xSemaphoreGive(i2cMutex);
+      }
+
+      if (bmeSuccess) {
+        // Example: The combined heat of the VOC plate, ESP32 wires, and your wrist = 12.5F
+        float rawTempF = (bme.temperature * 1.8) + 32.0;
+        float calibratedTempF = rawTempF - 10.5; 
+        
+        String envData = "DASH|WEAT:" + String(calibratedTempF, 1) + "F " + 
+                         String(bme.humidity, 0) + "% " + 
+                         String(bme.gas_resistance / 1000.0, 1) + "kOhm\n";
+        Serial1.print(envData);
+      }
     }
-    vTaskDelay(2000 / portTICK_PERIOD_MS); 
+    
+    // Loop incredibly fast (20ms / 50Hz) so we never miss a quick tap!
+    vTaskDelay(20 / portTICK_PERIOD_MS); 
   }
 }
 
@@ -183,9 +220,11 @@ void setup() {
   if (!mpu.begin()) Serial.println("MPU6050 Fail");
   if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) Serial.println("MAX30102 Fail");
 
-  bme.setGasHeater(320, 150);
+  bme.setGasHeater(350, 150);
   particleSensor.setup();
   particleSensor.setPulseAmplitudeRed(0x0A);
+
+  i2cMutex = xSemaphoreCreateMutex();
 
   // Init BLE [cite: 8, 9, 10, 11]
   BLEDevice::init("Pip-Watch");
@@ -243,14 +282,48 @@ void loop() {
       Serial.println(mountAngle);
       
       // Ping the Pip-Boy with a confirmation notification
-      Serial1.print("NOTIF|SYS:GYRO MATRICES SYNCED\n");
+      Serial1.print("NOTIF|                SYS:GYRO MATRICES SYNCED\n");
     }
-
+    // Hands-free Bootloader Jump
+    else if (commandCheck == "SYS|UPLOAD") {
+      Serial.println("Activating Wireless OTA Bootloader...");
+      Serial1.print("NOTIF|SYS:WIFI UPLINK ACTIVE\n");
+      
+      // Turn off Bluetooth to free up the radio
+      BLEDevice::deinit(true); 
+      
+      // Connect to Home WiFi
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(ssid, password);
+      
+      int attempts = 0;
+      while (WiFi.status() != WL_CONNECTED && attempts < 10) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nWiFi Connected! IP: " + WiFi.localIP().toString());
+        
+        // Start the OTA Listener
+        ArduinoOTA.setHostname("RobCo-Uplink-S3");
+        ArduinoOTA.begin();
+        otaModeActive = true; 
+        
+        Serial1.print("NOTIF|SYS:READY FOR FLASH\n");
+      } else {
+        Serial1.print("NOTIF|SYS:WIFI FAILED\n");
+      }
+    }
     fromPipBoy += "\n";
     if (deviceConnected) {
       pTxCharacteristic->setValue(fromPipBoy.c_str());
       pTxCharacteristic->notify();
     }
+  }
+  if (otaModeActive) {
+    ArduinoOTA.handle();
   }
   delay(10);
 }

@@ -1,3 +1,4 @@
+
 /**
  * UPLINK APP ENGINE (Shared Memory Saver)
  */
@@ -21,33 +22,33 @@ Pip.drawApp = function (mode, title, t1, t2) {
     bC.flip();
 };
 
-Pip.loadApp = function(fileName) {
+Pip.loadApp = function (fileName) {
     var path = "USER_BOOT/apps/" + fileName;
     console.log("--- ATTEMPTING TO LOAD: " + path + " ---");
-    
+
     try {
-        var fs = require("fs"); 
-        
+        var fs = require("fs");
+
         // ==========================================
         // THE FIX: Force Deep Garbage Collection!
         // This defragments the RAM and guarantees a clean workspace
         // ==========================================
-        process.memory(); 
-        
+        process.memory();
+
         var fileContent = fs.readFile(path);
-        
+
         if (fileContent === undefined || fileContent === null) {
             console.log("ERROR: File not found or Drive is locked by PC.");
             Pip.showNotification("FS ERROR", "Cannot read " + fileName);
             return;
         }
-        
+
         console.log("SUCCESS: File read! Bytes: " + fileContent.length);
         eval(fileContent);
-        
-    } catch(e) { 
+
+    } catch (e) {
         console.log("CRASH: " + e.message);
-        Pip.showNotification("EVAL ERROR", e.message.substring(0, 30)); 
+        Pip.showNotification("EVAL ERROR", e.message.substring(0, 30));
     }
 };
 
@@ -100,7 +101,7 @@ if (MODEINFO && MODEINFO[3] && MODEINFO[3].submenu) {
     var orig = MODEINFO[3].submenu;
     var newSub = {};
     if (orig[""]) newSub[""] = orig[""];
-    newSub["UPLINK"] = function() { Pip.loadApp("APP_UPLINK.min.js"); };
+    newSub["UPLINK"] = function () { Pip.loadApp("APP_UPLINK.min.js"); };
     for (var key in orig) {
         var kUp = key.toUpperCase();
         if (kUp !== "" && kUp !== "STATS") newSub[key] = orig[key];
@@ -124,7 +125,10 @@ if (MODEINFO && MODEINFO[3] && MODEINFO[3].submenu) {
                 menuObj["Calibrate Gyroscope"] = function () {
                     Pip.loadApp("APP_CALIB.min.js");
                 };
-                menuObj["Uplink Monitor"] = function() { Pip.loadApp("APP_MONITOR.min.js"); };
+                menuObj["Upload to ESP32"] = function () {
+                    Pip.loadApp("APP_BRIDGE.min.js");
+                };
+                menuObj["Uplink Monitor"] = function () { Pip.loadApp("APP_MONITOR.min.js"); };
                 E.showMenu = origShowMenu;
                 E.showMenu(menuObj);
             };

@@ -95,7 +95,7 @@ Pip.showNotification = function (header, text) {
         Pip.isNotifActive = false; // Lift the freeze-frame lock
         Pip.notifTimer = null;     // Free the memory
 
-        // 4. THE WIPE: Force the OS to redraw whatever was underneath the popup
+        // 4. THE WIPE: Tell the current screen to repaint itself
         if (Pip.isHomeActive && typeof Pip.drawHome === 'function') {
             Pip.drawHome();
         } 
@@ -105,11 +105,15 @@ Pip.showNotification = function (header, text) {
         else if (Pip.isStatusActive && typeof Pip.drawStatus === 'function') {
             Pip.drawStatus();
         }
-        else if (typeof E !== 'undefined' && typeof MODEINFO !== 'undefined' && typeof MODE !== 'undefined') {
-            // If no custom app is open, force the native Wand OS to redraw the current menu
-            if (MODEINFO[MODE] && MODEINFO[MODE].submenu) {
-                E.showMenu(MODEINFO[MODE].submenu);
-            }
+        else if (Pip.isBridgeActive && typeof Pip.drawBridge === 'function') {
+            Pip.drawBridge();
+        }
+        else if (typeof draw === 'function') {
+            // THE NATIVE FIX: If no custom app is open, this triggers the 
+            // native Wand OS to completely repaint the STAT, INV, DATA, MAP, or RADIO tabs!
+            bC.clear(1);
+            draw(); 
+            bC.flip();
         }
     }, 10000);
 };
