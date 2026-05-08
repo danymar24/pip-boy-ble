@@ -10,10 +10,11 @@
 #include "soc/rtc_cntl_reg.h"
 #include <WiFi.h>
 #include <ArduinoOTA.h>
+#include "secrets.h"
 
 // --- OTA Globals ---
-const char* ssid = "Rdz";
-const char* password = "3%j95gs7i%7b";
+const char* ssid = SECRET_SSID;
+const char* password = SECRET_PASSWORD;
 bool otaModeActive = false;
 
 // --- BLE Globals ---
